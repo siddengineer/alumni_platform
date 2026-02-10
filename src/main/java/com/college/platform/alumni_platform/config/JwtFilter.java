@@ -1,12 +1,9 @@
 // package com.college.platform.alumni_platform.config;
 
-// import com.college.platform.alumni_platform.entity.User;
-// import com.college.platform.alumni_platform.repository.UserRepository;
 // import jakarta.servlet.FilterChain;
 // import jakarta.servlet.ServletException;
 // import jakarta.servlet.http.HttpServletRequest;
 // import jakarta.servlet.http.HttpServletResponse;
-// import lombok.RequiredArgsConstructor;
 // import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 // import org.springframework.security.core.context.SecurityContextHolder;
 // import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -14,103 +11,367 @@
 // import org.springframework.web.filter.OncePerRequestFilter;
 
 // import java.io.IOException;
+// import java.util.Collections;
 
 // @Component
-// @RequiredArgsConstructor
 // public class JwtFilter extends OncePerRequestFilter {
 
 //     private final JwtUtil jwtUtil;
-//     private final UserRepository userRepository;
+
+//     public JwtFilter(JwtUtil jwtUtil) {
+//         this.jwtUtil = jwtUtil;
+//     }
 
 //     @Override
-//     protected void doFilterInternal(
-//             HttpServletRequest request,
-//             HttpServletResponse response,
-//             FilterChain filterChain
-//     ) throws ServletException, IOException {
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain) throws ServletException, IOException {
 
-//         String authHeader = request.getHeader("Authorization");
+//         final String authHeader = request.getHeader("Authorization");
+
+//         String username = null;
+//         String jwt = null;
 
 //         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-//             String token = authHeader.substring(7);
-//             String email = jwtUtil.extractEmail(token);
+//             jwt = authHeader.substring(7);
+//             try {
+//                 username = jwtUtil.extractUsername(jwt);
+//             } catch (Exception e) {
+//                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+//                 response.getWriter().write("Invalid JWT Token");
+//                 return;
+//             }
+//         }
 
-//             User user = userRepository.findByEmail(email).orElse(null);
-
-//             if (user != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-//                 UsernamePasswordAuthenticationToken authentication =
-//                         new UsernamePasswordAuthenticationToken(
-//                                 user, null, null
-//                         );
-
-//                 authentication.setDetails(
-//                         new WebAuthenticationDetailsSource().buildDetails(request)
+//         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+//             if (jwtUtil.validateToken(jwt, username)) {
+//                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+//                         username, null, Collections.emptyList() // roles can be added here
 //                 );
-
-//                 SecurityContextHolder.getContext().setAuthentication(authentication);
+//                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+//                 SecurityContextHolder.getContext().setAuthentication(authToken);
 //             }
 //         }
 
 //         filterChain.doFilter(request, response);
 //     }
 // }
+// package com.college.platform.alumni_platform.config;
+
+// import io.jsonwebtoken.Claims;
+// import jakarta.servlet.FilterChain;
+// import jakarta.servlet.ServletException;
+// import jakarta.servlet.http.HttpServletRequest;
+// import jakarta.servlet.http.HttpServletResponse;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.stereotype.Component;
+// import org.springframework.web.filter.OncePerRequestFilter;
+
+// import java.io.IOException;
+// import java.util.Collections;
+
+// @Component
+// public class JwtFilter extends OncePerRequestFilter {
+
+//     @Autowired
+//     private JwtUtil jwtUtil;
+
+//     @Override
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain)
+//             throws ServletException, IOException {
+
+//         String path = request.getRequestURI();
+
+//         // ✅ allow login without token
+//         if (path.equals("/admin/login")) {
+//             filterChain.doFilter(request, response);
+//             return;
+//         }
+
+//         String authHeader = request.getHeader("Authorization");
+
+//         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+//             response.setStatus(403);
+//             response.getWriter().write("{\"error\":\"Missing token\"}");
+//             return;
+//         }
+
+//         String token = authHeader.substring(7);
+
+//         try {
+//             Claims claims = jwtUtil.validateToken(token);
+//             String email = claims.getSubject();
+
+//             UsernamePasswordAuthenticationToken authentication =
+//                     new UsernamePasswordAuthenticationToken(
+//                             email,
+//                             null,
+//                             Collections.emptyList()
+//                     );
+
+//             SecurityContextHolder.getContext().setAuthentication(authentication);
+
+//         } catch (Exception e) {
+//             response.setStatus(403);
+//             response.getWriter().write("{\"error\":\"Invalid or expired token\"}");
+//             return;
+//         }
+
+//         filterChain.doFilter(request, response);
+//     }
+// }
+
+// package com.college.platform.alumni_platform.config;
+
+// import io.jsonwebtoken.Claims;
+// import jakarta.servlet.FilterChain;
+// import jakarta.servlet.ServletException;
+// import jakarta.servlet.http.HttpServletRequest;
+// import jakarta.servlet.http.HttpServletResponse;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+// import org.springframework.stereotype.Component;
+// import org.springframework.web.filter.OncePerRequestFilter;
+
+// import java.io.IOException;
+// import java.util.List;
+// import java.util.Set;
+
+// @Component
+// public class JwtFilter extends OncePerRequestFilter {
+
+//     @Autowired
+//     private JwtUtil jwtUtil; // ✅ USE SAME KEY
+
+//     private static final Set<String> WHITELIST = Set.of(
+//             "/admin/login",
+//             "/swagger-ui",
+//             "/v3/api-docs"
+//     );
+
+//     @Override
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain)
+//             throws ServletException, IOException {
+
+//         String path = request.getRequestURI();
+
+//         for (String open : WHITELIST) {
+//             if (path.contains(open)) {
+//                 filterChain.doFilter(request, response);
+//                 return;
+//             }
+//         }
+
+//         String authHeader = request.getHeader("Authorization");
+
+//         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+//             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+//             response.getWriter().write("{\"error\":\"Missing token\"}");
+//             return;
+//         }
+
+//         String token = authHeader.substring(7);
+
+//         try {
+//             Claims claims = jwtUtil.validateToken(token);
+
+//             String email = claims.getSubject();
+//             String role = claims.get("role", String.class);
+
+//             UsernamePasswordAuthenticationToken authToken =
+//                     new UsernamePasswordAuthenticationToken(
+//                             email,
+//                             null,
+//                             List.of(new SimpleGrantedAuthority("ROLE_" + role))
+//                     );
+
+//             authToken.setDetails(
+//                     new WebAuthenticationDetailsSource().buildDetails(request)
+//             );
+
+//             SecurityContextHolder.getContext().setAuthentication(authToken);
+
+//         } catch (Exception e) {
+//             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+//             response.getWriter().write("{\"error\":\"Invalid or expired token\"}");
+//             return;
+//         }
+
+//         filterChain.doFilter(request, response);
+//     }
+// }
+
+
+// package com.college.platform.alumni_platform.config;
+
+// import io.jsonwebtoken.Claims;
+// import io.jsonwebtoken.Jwts;
+// import io.jsonwebtoken.security.Keys;
+// import jakarta.servlet.FilterChain;
+// import jakarta.servlet.ServletException;
+// import jakarta.servlet.http.HttpServletRequest;
+// import jakarta.servlet.http.HttpServletResponse;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+// import org.springframework.stereotype.Component;
+// import org.springframework.web.filter.OncePerRequestFilter;
+
+// import java.io.IOException;
+// import java.nio.charset.StandardCharsets;
+// import java.util.List;
+
+// @Component
+// public class JwtFilter extends OncePerRequestFilter {
+
+//     private static final String SECRET =
+//             "THIS_IS_A_VERY_LONG_256_BIT_SECRET_KEY_FOR_HS256_ALGORITHM";
+
+//     @Override
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain)
+//             throws ServletException, IOException {
+
+//         String path = request.getRequestURI();
+
+//         // ✅ DO NOT CHECK JWT FOR LOGIN APIs
+//         if (path.equals("/admin/login")
+//                 || path.equals("/student/login")
+//                 || path.equals("/alumni/login")) {
+//             filterChain.doFilter(request, response);
+//             return;
+//         }
+
+//         String authHeader = request.getHeader("Authorization");
+
+//         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+//             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+//             response.getWriter().write("{\"error\":\"Missing token\"}");
+//             return;
+//         }
+
+//         String token = authHeader.substring(7);
+
+//         try {
+//             Claims claims = Jwts.parserBuilder()
+//                     .setSigningKey(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+//                     .build()
+//                     .parseClaimsJws(token)
+//                     .getBody();
+
+//             String email = claims.getSubject();
+//             String role = claims.get("role", String.class);
+
+//             UsernamePasswordAuthenticationToken authToken =
+//                     new UsernamePasswordAuthenticationToken(
+//                             email,
+//                             null,
+//                             List.of(new SimpleGrantedAuthority("ROLE_" + role))
+//                     );
+
+//             authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+//             SecurityContextHolder.getContext().setAuthentication(authToken);
+
+//         } catch (Exception e) {
+//             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+//             response.getWriter().write("{\"error\":\"Invalid or expired token\"}");
+//             return;
+//         }
+
+//         filterChain.doFilter(request, response);
+//     }
+// }
+
 package com.college.platform.alumni_platform.config;
 
-import com.college.platform.alumni_platform.entity.User;
-import com.college.platform.alumni_platform.repository.UserRepository;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Set;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
-    private JwtUtil jwtUtil;
-    private UserRepository userRepository;
+    private final JwtUtil jwtUtil;
 
-    // ✅ EXPLICIT CONSTRUCTOR
-    public JwtFilter(JwtUtil jwtUtil, UserRepository userRepository) {
+    public JwtFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
-        this.userRepository = userRepository;
     }
 
+    // ONLY login is public
+    private static final Set<String> WHITELIST = Set.of(
+            "/auth/login"
+    );
+
     @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain
-    ) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String path = request.getRequestURI();
+
+        for (String open : WHITELIST) {
+            if (path.startsWith(open)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+        }
 
         String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            String email = jwtUtil.extractEmail(token);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("Missing token");
+            return;
+        }
 
-            User user = userRepository.findByEmail(email).orElse(null);
+        String token = authHeader.substring(7);
 
-            if (user != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        try {
+            Claims claims = jwtUtil.validateToken(token);
+            String email = claims.getSubject();
+            String role = claims.get("role", String.class);
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                user, null, null
-                        );
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(
+                            email,
+                            null,
+                            List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                    );
 
-                authentication.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request)
-                );
+            authentication.setDetails(
+                    new WebAuthenticationDetailsSource().buildDetails(request)
+            );
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-            }
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        } catch (Exception e) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("Invalid or expired token");
+            return;
         }
 
         filterChain.doFilter(request, response);

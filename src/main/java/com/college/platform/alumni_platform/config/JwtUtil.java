@@ -12,27 +12,27 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private static final String SECRET_KEY =
-            "collegeSecretKey123collegeSecretKey123"; // minimum 32 chars
+    // 256-bit secret key
+    private static final String SECRET =
+            "THIS_IS_A_VERY_LONG_256_BIT_SECRET_KEY_FOR_HS256_ALGORITHM";
 
-    private final Key key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
+    private final Key key = Keys.hmacShaKeyFor(SECRET.getBytes());
 
-    public String generateToken(String email) {
+    public String generateToken(String email, String role) {
         return Jwts.builder()
                 .setSubject(email)
+                .claim("role", role)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 86400000))
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60)) // 1 hour
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    public String extractEmail(String token) {
-        Claims claims = Jwts.parserBuilder()
+    public Claims validateToken(String token) {
+        return Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-
-        return claims.getSubject();
     }
 }

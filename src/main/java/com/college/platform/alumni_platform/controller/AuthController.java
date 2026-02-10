@@ -1,162 +1,218 @@
 // package com.college.platform.alumni_platform.controller;
 
-// import com.college.platform.alumni_platform.dto.LoginRequest;
-// import com.college.platform.alumni_platform.dto.RegisterRequest;
-// import com.college.platform.alumni_platform.entity.User;
-// import com.college.platform.alumni_platform.repository.UserRepository;
-// import lombok.RequiredArgsConstructor;
-// import org.springframework.security.crypto.password.PasswordEncoder;
-// import org.springframework.web.bind.annotation.*;
-
-// @RestController
-// @RequestMapping("/api/v1/auth")
-// @RequiredArgsConstructor
-// public class AuthController {
-
-//     private final UserRepository userRepository;
-//     private final PasswordEncoder passwordEncoder;
-
-//     @PostMapping("/register")
-//     public String register(@RequestBody RegisterRequest request) {
-
-//         User user = new User();
-//         user.setName(request.getName());
-//         user.setEmail(request.getEmail());
-//         user.setPassword(passwordEncoder.encode(request.getPassword()));
-//         user.setRole(User.Role.valueOf(request.getRole()));
-//         user.setStatus(User.Status.PENDING);
-
-//         userRepository.save(user);
-
-//         return "Registered Successfully";
-//     }
-
-//     @PostMapping("/login")
-//     public String login(@RequestBody LoginRequest request) {
-
-//         User user = userRepository.findByEmail(request.getEmail())
-//                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-//         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-//             throw new RuntimeException("Invalid credentials");
-//         }
-
-//         return "Login successful";
-//     }
-// }
-// package com.college.platform.alumni_platform.controller;
-
 // import com.college.platform.alumni_platform.config.JwtUtil;
-// import com.college.platform.alumni_platform.dto.LoginRequest;
-// import com.college.platform.alumni_platform.dto.RegisterRequest;
 // import com.college.platform.alumni_platform.entity.User;
 // import com.college.platform.alumni_platform.repository.UserRepository;
-// import lombok.RequiredArgsConstructor;
+// import lombok.Data;
+// import org.springframework.http.HttpStatus;
+// import org.springframework.http.ResponseEntity;
 // import org.springframework.security.crypto.password.PasswordEncoder;
 // import org.springframework.web.bind.annotation.*;
 
+// import java.util.Map;
+
 // @RestController
 // @RequestMapping("/api/v1/auth")
-// @RequiredArgsConstructor
+// @CrossOrigin
 // public class AuthController {
 
 //     private final UserRepository userRepository;
 //     private final PasswordEncoder passwordEncoder;
 //     private final JwtUtil jwtUtil;
 
+//     public AuthController(UserRepository userRepository,
+//                           PasswordEncoder passwordEncoder,
+//                           JwtUtil jwtUtil) {
+//         this.userRepository = userRepository;
+//         this.passwordEncoder = passwordEncoder;
+//         this.jwtUtil = jwtUtil;
+//     }
+
 //     // ================= REGISTER =================
 //     @PostMapping("/register")
-//     public String register(@RequestBody RegisterRequest request) {
+//     public ResponseEntity<?> register(@RequestBody User user) {
 
-//         // check if email already exists
-//         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-//             throw new RuntimeException("Email already registered");
+//         if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+//             return ResponseEntity.badRequest().body("Email already exists");
 //         }
 
-//         User user = new User();
-//         user.setName(request.getName());
-//         user.setEmail(request.getEmail());
-//         user.setPassword(passwordEncoder.encode(request.getPassword()));
-//         user.setRole(User.Role.valueOf(request.getRole()));
+//         user.setPassword(passwordEncoder.encode(user.getPassword()));
 //         user.setStatus(User.Status.PENDING);
 
 //         userRepository.save(user);
 
-//         return "Registered Successfully";
+//         return ResponseEntity.ok("Registration successful. Await admin approval.");
 //     }
 
 //     // ================= LOGIN =================
 //     @PostMapping("/login")
-//     public String login(@RequestBody LoginRequest request) {
+//     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
 
 //         User user = userRepository.findByEmail(request.getEmail())
 //                 .orElseThrow(() -> new RuntimeException("User not found"));
 
 //         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-//             throw new RuntimeException("Invalid credentials");
+//             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+//                     .body("Invalid credentials");
 //         }
 
-//         // generate JWT token
-//         return jwtUtil.generateToken(user.getEmail());
+//         if (user.getStatus() != User.Status.APPROVED) {
+//             return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                     .body("Account not approved");
+//         }
+
+//         String token = jwtUtil.generateToken(
+//                 user.getEmail(),
+//                 user.getRole().name()
+//         );
+
+//         return ResponseEntity.ok(
+//                 Map.of(
+//                         "message", "Login successful",
+//                         "token", token,
+//                         "role", user.getRole().name()
+//                 )
+//         );
+//     }
+
+//     // ================= DTO =================
+//     @Data
+//     static class LoginRequest {
+//         private String email;
+//         private String password;
+//     }
+// }
+// package com.college.platform.alumni_platform.controller;
+
+// import com.college.platform.alumni_platform.config.JwtUtil;
+// import com.college.platform.alumni_platform.entity.User;
+// import com.college.platform.alumni_platform.repository.UserRepository;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.HashMap;
+// import java.util.Map;
+
+// @RestController
+// @RequestMapping("/api/v1/auth")
+// public class AuthController {
+
+//     private final UserRepository userRepository;
+//     private final JwtUtil jwtUtil;
+
+//     public AuthController(UserRepository userRepository, JwtUtil jwtUtil) {
+//         this.userRepository = userRepository;
+//         this.jwtUtil = jwtUtil;
+//     }
+
+//     @PostMapping("/login")
+//     public ResponseEntity<?> login(@RequestBody Map<String, String> userMap) {
+//         String email = userMap.get("email");
+//         String password = userMap.get("password");
+
+//         User user = userRepository.findByEmail(email);
+//         if (user == null || !user.getPassword().equals(password)) {
+//             return ResponseEntity.status(401).body("Invalid credentials");
+//         }
+
+//         String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
+
+//         Map<String, Object> response = new HashMap<>();
+//         response.put("token", token);
+//         response.put("role", user.getRole());
+//         response.put("message", "Login successful");
+
+//         return ResponseEntity.ok(response);
+//     }
+// }
+// package com.college.platform.alumni_platform.controller;
+
+// import com.college.platform.alumni_platform.config.JwtUtil;
+// import com.college.platform.alumni_platform.entity.User;
+// import com.college.platform.alumni_platform.repository.UserRepository;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.Map;
+
+// @RestController
+// @RequestMapping("/admin")
+// public class AuthController {
+
+//     @Autowired
+//     private UserRepository userRepository;
+
+//     @Autowired
+//     private JwtUtil jwtUtil;
+
+//     @PostMapping("/login")
+//     public ResponseEntity<?> login(@RequestBody Map<String, String> request) {
+
+//         String email = request.get("email");
+//         String password = request.get("password");
+
+//         User user = userRepository.findByEmail(email);
+
+//         if (user == null || !user.getPassword().equals(password)) {
+//             return ResponseEntity.status(403)
+//                     .body(Map.of("error", "Invalid credentials"));
+//         }
+
+//         String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
+
+//         return ResponseEntity.ok(
+//                 Map.of(
+//                         "token", token,
+//                         "role", user.getRole(),
+//                         "message", "Login successful"
+//                 )
+//         );
 //     }
 // }
 package com.college.platform.alumni_platform.controller;
 
 import com.college.platform.alumni_platform.config.JwtUtil;
-import com.college.platform.alumni_platform.dto.LoginRequest;
-import com.college.platform.alumni_platform.dto.RegisterRequest;
 import com.college.platform.alumni_platform.entity.User;
 import com.college.platform.alumni_platform.repository.UserRepository;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/auth")
 public class AuthController {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    // ✅ EXPLICIT CONSTRUCTOR (MANDATORY)
-    public AuthController(
-            UserRepository userRepository,
-            PasswordEncoder passwordEncoder,
-            JwtUtil jwtUtil
-    ) {
+    public AuthController(UserRepository userRepository, JwtUtil jwtUtil) {
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
 
-    @PostMapping("/register")
-    public String register(@RequestBody RegisterRequest request) {
-
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already registered");
-        }
-
-        User user = new User();
-        user.setName(request.getName());
-        user.setEmail(request.getEmail());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole(User.Role.valueOf(request.getRole()));
-        user.setStatus(User.Status.PENDING);
-
-        userRepository.save(user);
-        return "Registered Successfully";
-    }
-
     @PostMapping("/login")
-    public String login(@RequestBody LoginRequest request) {
+    public ResponseEntity<?> login(@RequestBody Map<String, String> request) {
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        String email = request.get("email");
+        String password = request.get("password");
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+        User user = userRepository.findByEmail(email);
+
+        if (user == null || !user.getPassword().equals(password)) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("error", "Invalid credentials"));
         }
 
-        return jwtUtil.generateToken(user.getEmail());
+        String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "token", token,
+                        "role", user.getRole(),
+                        "message", user.getRole() + " login successful"
+                )
+        );
     }
 }
