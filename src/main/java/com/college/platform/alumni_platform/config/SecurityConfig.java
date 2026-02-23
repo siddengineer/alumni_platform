@@ -131,12 +131,62 @@
 // }
 
 
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 .requestMatchers("/auth/login").permitAll()
+
+//                 .requestMatchers("/admin/**").hasRole("ADMIN")
+//                 .requestMatchers("/student/**").hasRole("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+// }
+
+
+
+
+
+
+
 package com.college.platform.alumni_platform.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -156,12 +206,19 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/login").permitAll()
+                // Public endpoints
+                .requestMatchers("/auth/login", "/auth/register").permitAll()
 
-                .requestMatchers("/admin/**").hasRole("ADMIN")
-                .requestMatchers("/student/**").hasRole("STUDENT")
+                // Admin APIs
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+
+                // Student APIs
+                .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
+
+                // Alumni APIs
                 .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
 
+                // Everything else requires login
                 .anyRequest().authenticated()
             )
 
@@ -169,6 +226,7 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             );
 
+        // JWT Filter
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
