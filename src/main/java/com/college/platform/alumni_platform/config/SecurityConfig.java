@@ -181,16 +181,332 @@
 
 
 
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 // Public endpoints
+//                 .requestMatchers("/auth/login", "/auth/register").permitAll()
+
+//                 // Admin APIs
+//                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+
+//                 // Student APIs
+//                 .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
+
+//                 // Alumni APIs
+//                 .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+
+//                 // Everything else requires login
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         // JWT Filter
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+// }
+
+
+
+
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 .requestMatchers("/auth/login", "/auth/register").permitAll()
+//                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+//                 .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     // 🔥 ADD THIS
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 .requestMatchers("/auth/login", "/auth/register").permitAll()
+//                 .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+//                 .requestMatchers("/api/v1/students/**").hasAuthority("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasAuthority("ALUMNI")
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 // Public endpoints
+//                 .requestMatchers("/auth/login", "/auth/register").permitAll()
+
+//                 // Role-based access
+//                 .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+//                 .requestMatchers("/api/v1/students/**").hasAuthority("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasAuthority("ALUMNI")
+
+//                 // All other requests require authentication
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+// import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// @EnableWebSecurity
+// @EnableMethodSecurity
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 .requestMatchers("/auth/**").permitAll()
+//                 .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+//                 .requestMatchers("/api/v1/students/**").hasAuthority("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasAuthority("ALUMNI")
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+
+
 package com.college.platform.alumni_platform.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+// @Configuration
+// @EnableMethodSecurity
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             .authorizeHttpRequests(auth -> auth
+//                 .requestMatchers("/auth/**").permitAll()
+//                 .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
+//                 .requestMatchers("/api/v1/students/**").hasAuthority("STUDENT")
+//                 .requestMatchers("/api/v1/alumni/**").hasAuthority("ALUMNI")
+//                 .anyRequest().authenticated()
+//             )
+
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             );
+
+//         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     // 🔥 THIS WAS MISSING
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
@@ -205,30 +521,34 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
 
+            // .authorizeHttpRequests(auth -> auth
+            //     // .requestMatchers("/auth/**").permitAll()
+            //     .requestMatchers("/api/v1/alumni/**").permitAll()
+            //     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+            //     .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
+            //     .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+            //     .anyRequest().authenticated()
+            // )
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
-                .requestMatchers("/auth/login", "/auth/register").permitAll()
-
-                // Admin APIs
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-
-                // Student APIs
-                .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
-
-                // Alumni APIs
-                .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
-
-                // Everything else requires login
-                .anyRequest().authenticated()
-            )
-
+                   .requestMatchers("/auth/**").permitAll()
+                   .requestMatchers("/pay").permitAll()
+                   .requestMatchers("/api/v1/alumni/jobs/payment/verify").permitAll()
+                   .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                   .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+                   .requestMatchers("/api/v1/student/**").hasRole("STUDENT")
+                   .anyRequest().authenticated()
+               )
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            );
+            )
 
-        // JWT Filter
-        http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }
