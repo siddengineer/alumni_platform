@@ -532,6 +532,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                    .requestMatchers("/auth/**").permitAll()
                    .requestMatchers("/pay").permitAll()
+                   .requestMatchers("/razorpay/**").permitAll()
                    .requestMatchers("/api/v1/alumni/jobs/payment/verify").permitAll()
                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                    .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
