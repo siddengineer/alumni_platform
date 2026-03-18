@@ -249,10 +249,12 @@
 package com.college.platform.alumni_platform.entity;
 
 import jakarta.persistence.*;
+import java.io.Serializable;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "job")
-public class Job {
+public class Job implements Serializable {
 
     public enum JobStatus {
         PENDING,
