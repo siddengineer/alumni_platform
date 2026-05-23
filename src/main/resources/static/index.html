@@ -755,6 +755,8 @@ let currentApplicantsJobId = null;
 let currentPayData = null;
 let currentCertJobId = null;
 let currentCertStudentEmail = null;
+let currentCertJobTitle = '';
+let currentCertAlumniEmail = '';
 
 // ══════════════════════════════════════════════════════════
 //  THEME
@@ -1420,6 +1422,8 @@ async function loadAdminAllJobs(){
   tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Loading…</td></tr>`;
   const jobs=await apiGet('/api/v1/admin/jobs')||[];
   if(!jobs.length){tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No jobs found</td></tr>`;return;}
+  // Cache jobs so openCertModal can look up title/alumni
+  jobs.forEach(j=>{ jobCache[j.id]=j; });
   tbody.innerHTML=jobs.map(j=>`
     <tr>
       <td>#${j.id}</td>
@@ -1429,7 +1433,7 @@ async function loadAdminAllJobs(){
       <td><span class="badge badge-${(j.status||'pending').toLowerCase()}">${j.status}</span></td>
       <td><span class="badge badge-${(j.paymentStatus||'held').toLowerCase()}">${j.paymentStatus||'HELD'}</span></td>
       <td>
-        ${j.status==='APPROVED'?`<button class="btn btn-xs" style="background:var(--blue-light);color:var(--blue);border:1px solid var(--blue)" onclick="openCertModal(${j.id})">🏆 Issue Cert</button>`:''}
+        ${(j.status==='ASSIGNED'||j.status==='APPROVED'||j.status==='COMPLETED')?`<button class="btn btn-xs" style="background:var(--blue-light);color:var(--blue);border:1px solid var(--blue)" onclick="openCertModal(${j.id})">🏆 Issue Cert</button>`:''}
         ${j.status==='PENDING'?`<button class="btn btn-success btn-xs" onclick="adminApprove(${j.id})">✓ Approve</button>`:''}
       </td>
     </tr>`).join('');
@@ -1475,13 +1479,15 @@ async function loadAdminPayments(){
 // ══════════════════════════════════════════════════════════
 async function openCertModal(jobId){
   currentCertJobId=jobId;
-  // FIX: fetch real applications from API to find selected student
-  const apps=await apiGet(`/api/v1/alumni/jobs/${jobId}/applications`)||[];
+  // Look up job info from cache (populated by loadAdminAllJobs)
+  const j=jobCache[jobId]||{};
+  currentCertJobTitle=j.title||'';
+  currentCertAlumniEmail=j.alumni?.email||'';
+  // Use admin endpoint to get applications for this job
+  const apps=await apiGet(`/api/v1/admin/jobs/${jobId}/applications`)||[];
   const selected=apps.find(a=>a.status==='SELECTED');
   currentCertStudentEmail=selected?selected.student?.email:'';
-  const jobs=await apiGet('/api/v1/admin/jobs')||[];
-  const j=jobs.find(x=>x.id===jobId);
-  document.getElementById('certModalSub').textContent='Job: '+(j?.title||'');
+  document.getElementById('certModalSub').textContent='Job: '+currentCertJobTitle;
   document.getElementById('certStudentEmail').value=currentCertStudentEmail||'(No student selected yet)';
   document.getElementById('certName').value='Job Completion Certificate';
   openM('certModal');
@@ -1494,7 +1500,6 @@ async function issueCert(){
   const users=await apiGet('/api/v1/admin/users')||[];
   const student=users.find(u=>u.email===currentCertStudentEmail);
   if(!student){toast('Student not found in system','err');return;}
-  // FIX: call real API POST /api/v1/admin/jobs/{jobId}/certificate
   try{
     const res=await fetch(`${API}/api/v1/admin/jobs/${currentCertJobId}/certificate`,{
       method:'POST',
@@ -1503,7 +1508,15 @@ async function issueCert(){
     });
     if(res.ok){
       closeM('certModal');
-      toast('Certificate issued to '+currentCertStudentEmail+' ✓','ok');
+      toast('Certificate issued ✓ — downloading PDF…','ok');
+      // Auto-download PDF certificate for the admin
+      downloadCertPDF({
+        certName:       certName,
+        studentEmail:   currentCertStudentEmail,
+        jobTitle:       currentCertJobTitle||'',
+        alumniEmail:    currentCertAlumniEmail||'',
+        issuedAt:       new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})
+      });
       loadAdminAllJobs();
       return;
     }
@@ -1512,6 +1525,180 @@ async function issueCert(){
   }catch{
     toast('Cannot reach server','err');
   }
+}
+
+// ══════════════════════════════════════════════════════════
+//  PDF CERTIFICATE GENERATOR (Canvas → PNG download)
+// ══════════════════════════════════════════════════════════
+function downloadCertPDF({certName,studentEmail,jobTitle,alumniEmail,issuedAt}){
+  const W=1122, H=794; // A4 landscape px at 96dpi
+  const canvas=document.createElement('canvas');
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+
+  // ── Background ──
+  const bg=ctx.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0,'#0a1628');
+  bg.addColorStop(1,'#0d2444');
+  ctx.fillStyle=bg;
+  ctx.fillRect(0,0,W,H);
+
+  // ── Gold border (outer) ──
+  ctx.strokeStyle='#c9a84c';
+  ctx.lineWidth=8;
+  ctx.strokeRect(24,24,W-48,H-48);
+  // ── Inner border ──
+  ctx.strokeStyle='rgba(201,168,76,0.4)';
+  ctx.lineWidth=2;
+  ctx.strokeRect(40,40,W-80,H-80);
+
+  // ── Corner ornaments ──
+  function corner(x,y,rx,ry){
+    ctx.strokeStyle='#c9a84c';
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(x,y+ry*2);
+    ctx.lineTo(x,y);
+    ctx.lineTo(x+rx*2,y);
+    ctx.stroke();
+  }
+  const m=48,s=40;
+  corner(m,m,s,s);
+  corner(W-m-s*2,m,s,s);
+  corner(m,H-m-s*2,s,s);
+  corner(W-m-s*2,H-m-s*2,s,s);
+
+  // ── Watermark seal (circle) ──
+  ctx.save();
+  ctx.globalAlpha=0.07;
+  ctx.strokeStyle='#c9a84c';
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.arc(W/2,H/2,180,0,Math.PI*2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(W/2,H/2,200,0,Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  // ── Platform name ──
+  ctx.font='bold 22px Georgia,serif';
+  ctx.fillStyle='#c9a84c';
+  ctx.textAlign='center';
+  ctx.letterSpacing='6px';
+  ctx.fillText('ALUMNICONNECT', W/2, 110);
+
+  // ── "Certificate of Completion" ──
+  ctx.font='italic 36px Georgia,serif';
+  ctx.fillStyle='rgba(255,255,255,0.85)';
+  ctx.fillText('Certificate of Completion', W/2, 175);
+
+  // ── Divider line ──
+  const grad=ctx.createLinearGradient(W/2-260,0,W/2+260,0);
+  grad.addColorStop(0,'transparent');
+  grad.addColorStop(0.5,'#c9a84c');
+  grad.addColorStop(1,'transparent');
+  ctx.strokeStyle=grad;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(W/2-260,200);
+  ctx.lineTo(W/2+260,200);
+  ctx.stroke();
+
+  // ── "This certifies that" ──
+  ctx.font='18px Georgia,serif';
+  ctx.fillStyle='rgba(255,255,255,0.65)';
+  ctx.fillText('This certifies that', W/2, 255);
+
+  // ── Student name/email ──
+  const displayName=studentEmail.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  ctx.font='bold 52px Georgia,serif';
+  ctx.fillStyle='#ffffff';
+  ctx.fillText(displayName, W/2, 330);
+
+  // ── Student email (smaller) ──
+  ctx.font='15px Arial,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText(studentEmail, W/2, 358);
+
+  // ── "has successfully completed" ──
+  ctx.font='18px Georgia,serif';
+  ctx.fillStyle='rgba(255,255,255,0.65)';
+  ctx.fillText('has successfully completed', W/2, 400);
+
+  // ── Job title ──
+  ctx.font='bold 30px Georgia,serif';
+  ctx.fillStyle='#c9a84c';
+  ctx.fillText(jobTitle||certName, W/2, 445);
+
+  // ── Bottom divider ──
+  ctx.strokeStyle=grad;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(W/2-260,478);
+  ctx.lineTo(W/2+260,478);
+  ctx.stroke();
+
+  // ── Three footer columns ──
+  const colY=560;
+
+  // Left — issued by
+  ctx.font='bold 13px Arial,sans-serif';
+  ctx.fillStyle='#c9a84c';
+  ctx.textAlign='center';
+  ctx.fillText('ISSUED BY', W/4, colY-14);
+  ctx.font='14px Arial,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.fillText('AlumniConnect Platform', W/4, colY+8);
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.font='12px Arial,sans-serif';
+  ctx.fillText('Administrator', W/4, colY+26);
+
+  // Center — seal
+  ctx.beginPath();
+  ctx.arc(W/2, colY, 38, 0, Math.PI*2);
+  ctx.strokeStyle='#c9a84c';
+  ctx.lineWidth=2;
+  ctx.stroke();
+  ctx.font='bold 11px Arial,sans-serif';
+  ctx.fillStyle='#c9a84c';
+  ctx.fillText('VERIFIED', W/2, colY+5);
+
+  // Right — date
+  ctx.font='bold 13px Arial,sans-serif';
+  ctx.fillStyle='#c9a84c';
+  ctx.fillText('DATE OF ISSUE', (W*3)/4, colY-14);
+  ctx.font='14px Arial,sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.fillText(issuedAt, (W*3)/4, colY+8);
+
+  // ── Signature lines ──
+  const lineY=640;
+  [[W/4,'Administrator'],[W*3/4,alumniEmail?alumniEmail.split('@')[0]:'Alumni']].forEach(([x,label])=>{
+    ctx.strokeStyle='rgba(201,168,76,0.6)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(x-80,lineY);
+    ctx.lineTo(x+80,lineY);
+    ctx.stroke();
+    ctx.font='12px Arial,sans-serif';
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    ctx.textAlign='center';
+    ctx.fillText(label, x, lineY+18);
+  });
+
+  // ── Cert ID watermark ──
+  ctx.font='10px monospace';
+  ctx.fillStyle='rgba(255,255,255,0.2)';
+  ctx.textAlign='center';
+  const certId='CERT-'+Date.now().toString(36).toUpperCase();
+  ctx.fillText('Certificate ID: '+certId, W/2, H-50);
+
+  // ── Download ──
+  const link=document.createElement('a');
+  link.download=`Certificate_${displayName.replace(/ /g,'_')}_${(jobTitle||'Job').replace(/ /g,'_')}.png`;
+  link.href=canvas.toDataURL('image/png');
+  link.click();
 }
 
 // ══════════════════════════════════════════════════════════

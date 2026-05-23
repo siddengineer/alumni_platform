@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <title>Razorpay Payment</title>
@@ -45,6 +45,216 @@
         rzp.open();
     };
 
+</script>
+
+</body>
+</html> -->
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Complete Payment — AlumniConnect</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f3f2ef; color: #111; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .card {
+            background: #fff; border-radius: 10px; padding: 32px;
+            max-width: 460px; width: 100%;
+            box-shadow: 0 4px 16px rgba(0,0,0,.12);
+        }
+        .logo { font-size: 1.5rem; font-weight: 900; color: #0a66c2; margin-bottom: 4px; }
+        .title { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; }
+        .info-box {
+            background: #f9f9f9; border: 1px solid #e0e0e0;
+            border-radius: 8px; padding: 16px; margin-bottom: 20px;
+        }
+        .row {
+            display: flex; justify-content: space-between;
+            padding: 6px 0; font-size: .9rem; color: #555;
+        }
+        .row strong { color: #111; }
+        .divider { border: none; border-top: 1px solid #e0e0e0; margin: 8px 0; }
+        .total { font-weight: 700; font-size: 1rem; color: #057642; }
+        .contact-box {
+            background: #e8f0fe; border: 1px solid #0a66c2;
+            border-radius: 8px; padding: 12px; margin-bottom: 20px;
+            font-size: .85rem; color: #004182;
+        }
+        .pay-btn {
+            width: 100%; padding: 12px; background: #057642; color: #fff;
+            border: none; border-radius: 24px; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: background .2s;
+        }
+        .pay-btn:hover { background: #005231; }
+        .pay-btn:disabled { background: #999; cursor: not-allowed; }
+        .msg { text-align: center; margin-top: 16px; font-size: .85rem; color: #666; }
+        .msg.success { color: #057642; font-weight: 600; }
+        .msg.error   { color: #cc1016; font-weight: 600; }
+        #spinner { display: none; margin-left: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo">AlumniConnect</div>
+    <div class="title">💳 Complete Payment</div>
+
+    <div class="info-box">
+        <div class="row">
+            <span>Job</span>
+            <strong id="uiJobTitle" th:text="${jobTitle}">—</strong>
+        </div>
+        <div class="row">
+            <span>Selected Student</span>
+            <strong id="uiStudent" th:text="${studentEmail}">—</strong>
+        </div>
+        <div class="row">
+            <span>Order ID</span>
+            <span style="font-size:.75rem;color:#888" id="uiOrderId" th:text="${orderId}">—</span>
+        </div>
+        <hr class="divider"/>
+        <div class="row total">
+            <span>Total Amount</span>
+            <!-- Amount from Razorpay is in paise; divide by 100 for display -->
+            <span id="uiAmount">₹—</span>
+        </div>
+    </div>
+
+    <div class="contact-box">
+        💬 Contact student before paying:<br/>
+        <strong id="uiContactEmail" th:text="${studentEmail}"></strong><br/>
+        <span style="font-size:.8rem;opacity:.8">Confirm scope, timeline, and expectations first.</span>
+    </div>
+
+    <div style="background:#e6f4ea;border:1px solid #057642;border-radius:6px;padding:10px;font-size:.82rem;color:#057642;margin-bottom:18px">
+        🔒 Powered by Razorpay. Payment is only released to the student after job completion.
+    </div>
+
+    <button class="pay-btn" id="payBtn" onclick="startPayment()">
+        Pay with Razorpay →<span id="spinner">⏳</span>
+    </button>
+    <div class="msg" id="statusMsg"></div>
+</div>
+
+<script th:inline="javascript">
+    /*<![CDATA[*/
+
+    // ── Values injected by Thymeleaf ──
+    var ORDER_ID     = /*[[${orderId}]]*/ '';
+    var AMOUNT       = /*[[${amount}]]*/ 0;      // paise from Razorpay
+    var CURRENCY     = /*[[${currency}]]*/ 'INR';
+    var JOB_TITLE    = /*[[${jobTitle}]]*/ '';
+    var STUDENT_EMAIL= /*[[${studentEmail}]]*/ '';
+    var RZP_KEY      = /*[[${key}]]*/ '';
+    var JWT_TOKEN    = /*[[${token}]]*/ '';       // passed so we can call /verify with Bearer
+
+    // ── Friendly amount display ──
+    // Razorpay stores paise (1 INR = 100 paise).
+    // If amount > 10000 it's almost certainly in paise already.
+    var displayAmt = AMOUNT > 10000 ? (AMOUNT / 100) : AMOUNT;
+    document.getElementById('uiAmount').textContent = '₹' + displayAmt.toLocaleString('en-IN');
+
+    function setStatus(msg, type) {
+        var el = document.getElementById('statusMsg');
+        el.textContent = msg;
+        el.className = 'msg ' + (type || '');
+    }
+
+    function startPayment() {
+        if (!ORDER_ID) {
+            setStatus('❌ Missing order ID — please go back and try again.', 'error');
+            return;
+        }
+        document.getElementById('payBtn').disabled = true;
+        document.getElementById('spinner').style.display = 'inline';
+
+        var options = {
+            key:         RZP_KEY,
+            amount:      AMOUNT,
+            currency:    CURRENCY,
+            name:        'AlumniConnect',
+            description: 'Job Payment — ' + JOB_TITLE,
+            order_id:    ORDER_ID,
+            prefill: {
+                email: STUDENT_EMAIL
+            },
+            theme: { color: '#0a66c2' },
+
+            handler: function(response) {
+                setStatus('Verifying payment…', '');
+                verifyPayment(response);
+            },
+
+            modal: {
+                ondismiss: function() {
+                    document.getElementById('payBtn').disabled = false;
+                    document.getElementById('spinner').style.display = 'none';
+                    setStatus('Payment cancelled. You can try again.', '');
+                }
+            }
+        };
+
+        var rzp = new Razorpay(options);
+        rzp.on('payment.failed', function(resp) {
+            document.getElementById('payBtn').disabled = false;
+            document.getElementById('spinner').style.display = 'none';
+            setStatus('❌ Payment failed: ' + (resp.error.description || 'Unknown error'), 'error');
+        });
+        rzp.open();
+    }
+
+    async function verifyPayment(response) {
+        try {
+            var headers = { 'Content-Type': 'application/json' };
+            // Include JWT if available so Spring Security allows the call
+            if (JWT_TOKEN) {
+                headers['Authorization'] = 'Bearer ' + JWT_TOKEN;
+            }
+
+            var res = await fetch('/api/v1/alumni/jobs/payment/verify', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    razorpay_order_id:   response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature:  response.razorpay_signature
+                })
+            });
+
+            if (res.ok) {
+                setStatus('✅ Payment verified! Student hired successfully.', 'success');
+                document.getElementById('payBtn').style.display = 'none';
+                // Redirect back to alumni dashboard after 2.5s
+                setTimeout(function() {
+                    window.location.href = '/';
+                }, 2500);
+            } else {
+                var err = await res.json().catch(function() { return {}; });
+                setStatus('❌ Verification failed: ' + (err.error || 'Invalid signature'), 'error');
+                document.getElementById('payBtn').disabled = false;
+                document.getElementById('spinner').style.display = 'none';
+            }
+        } catch (e) {
+            setStatus('⚠️ Payment done but verification failed — contact admin with order ID: ' + ORDER_ID, 'error');
+            document.getElementById('payBtn').disabled = false;
+            document.getElementById('spinner').style.display = 'none';
+        }
+    }
+
+    /*]]>*/
 </script>
 
 </body>
