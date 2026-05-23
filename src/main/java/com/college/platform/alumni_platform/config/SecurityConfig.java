@@ -453,17 +453,17 @@
 
 
 
-package com.college.platform.alumni_platform.config;
+// package com.college.platform.alumni_platform.config;
 
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 // @Configuration
 // @EnableMethodSecurity
@@ -505,6 +505,70 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 //     }
 // }
 
+// @Configuration
+// @EnableMethodSecurity
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+//             .csrf(csrf -> csrf.disable())
+
+//             // .authorizeHttpRequests(auth -> auth
+//             //     // .requestMatchers("/auth/**").permitAll()
+//             //     .requestMatchers("/api/v1/alumni/**").permitAll()
+//             //     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+//             //     .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
+//             //     .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+//             //     .anyRequest().authenticated()
+//             // )
+//             .authorizeHttpRequests(auth -> auth
+//                    .requestMatchers("/auth/**").permitAll()
+//                    .requestMatchers("/pay").permitAll()
+//                    .requestMatchers("/razorpay/**").permitAll()
+//                    .requestMatchers("/api/v1/alumni/jobs/payment/verify").permitAll()
+//                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+//                    .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+//                    .requestMatchers("/api/v1/student/**").hasRole("STUDENT")
+//                    .anyRequest().authenticated()
+//                )
+//             .sessionManagement(session ->
+//                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//             )
+
+//             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+
+package com.college.platform.alumni_platform.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
@@ -519,31 +583,57 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
+
+            // Disable CSRF for REST API
             .csrf(csrf -> csrf.disable())
 
-            // .authorizeHttpRequests(auth -> auth
-            //     // .requestMatchers("/auth/**").permitAll()
-            //     .requestMatchers("/api/v1/alumni/**").permitAll()
-            //     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-            //     .requestMatchers("/api/v1/students/**").hasRole("STUDENT")
-            //     .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
-            //     .anyRequest().authenticated()
-            // )
+            // Route security
             .authorizeHttpRequests(auth -> auth
-                   .requestMatchers("/auth/**").permitAll()
-                   .requestMatchers("/pay").permitAll()
-                   .requestMatchers("/razorpay/**").permitAll()
-                   .requestMatchers("/api/v1/alumni/jobs/payment/verify").permitAll()
-                   .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                   .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
-                   .requestMatchers("/api/v1/student/**").hasRole("STUDENT")
-                   .anyRequest().authenticated()
-               )
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+
+                // PUBLIC
+                .requestMatchers("/", "/index.html").permitAll()
+
+                .requestMatchers("/auth/**").permitAll()
+
+                .requestMatchers("/pay").permitAll()
+
+                .requestMatchers("/razorpay/**").permitAll()
+
+                .requestMatchers(
+                        "/api/v1/alumni/jobs/payment/verify"
+                ).permitAll()
+
+                // ADMIN
+                .requestMatchers(
+                        "/api/v1/admin/**"
+                ).hasRole("ADMIN")
+
+                // ALUMNI
+                .requestMatchers(
+                        "/api/v1/alumni/**"
+                ).hasRole("ALUMNI")
+
+                // STUDENT
+                .requestMatchers(
+                        "/api/v1/student/**"
+                ).hasRole("STUDENT")
+
+                // REQUIRE LOGIN
+                .anyRequest().authenticated()
             )
 
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+            // JWT → Stateless
+            .sessionManagement(session ->
+                    session.sessionCreationPolicy(
+                            SessionCreationPolicy.STATELESS
+                    )
+            )
+
+            // JWT FILTER
+            .addFilterBefore(
+                    jwtFilter,
+                    UsernamePasswordAuthenticationFilter.class
+            );
 
         return http.build();
     }

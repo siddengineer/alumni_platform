@@ -711,25 +711,218 @@
 
 
 
+// package com.college.platform.alumni_platform.controller;
+
+// import com.college.platform.alumni_platform.entity.Application;
+// import com.college.platform.alumni_platform.entity.Job;
+// import com.college.platform.alumni_platform.entity.PaymentLog;
+// import com.college.platform.alumni_platform.entity.User;
+// import com.college.platform.alumni_platform.repository.ApplicationRepository;
+// import com.college.platform.alumni_platform.repository.JobRepository;
+// import com.college.platform.alumni_platform.repository.PaymentLogRepository;
+// import com.college.platform.alumni_platform.repository.UserRepository;
+// import com.college.platform.alumni_platform.service.RazorpayService;
+// import com.college.platform.alumni_platform.service.JobService;
+
+// import org.springframework.beans.factory.annotation.Value;
+// import org.springframework.security.core.Authentication;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.transaction.annotation.Transactional;
+// import org.springframework.web.bind.annotation.*;
+// import org.springframework.cache.annotation.CacheEvict;
+
+// import java.util.List;
+// import java.util.Map;
+
+// @RestController
+// @RequestMapping("/api/v1/alumni/jobs")
+// public class AlumniJobController {
+
+//     private final JobService jobService; // ✅ ADDED
+//     private final JobRepository jobRepository;
+//     private final UserRepository userRepository;
+//     private final ApplicationRepository applicationRepository;
+//     private final RazorpayService razorpayService;
+//     private final PaymentLogRepository paymentLogRepository;
+
+//     @Value("${razorpay.key}")
+//     private String razorpayKey;
+
+//     @Value("${razorpay.secret}")
+//     private String razorpaySecret;
+
+//     public AlumniJobController(JobService jobService,
+//                                JobRepository jobRepository,
+//                                UserRepository userRepository,
+//                                ApplicationRepository applicationRepository,
+//                                RazorpayService razorpayService,
+//                                PaymentLogRepository paymentLogRepository) {
+
+//         this.jobService = jobService; // ✅ ADDED
+//         this.jobRepository = jobRepository;
+//         this.userRepository = userRepository;
+//         this.applicationRepository = applicationRepository;
+//         this.razorpayService = razorpayService;
+//         this.paymentLogRepository = paymentLogRepository;
+//     }
+
+//     // ✅ CREATE JOB
+//     @PostMapping
+//     public Job createJob(@RequestBody Job job) {
+
+//         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+//         String email = authentication.getName();
+
+//         User alumni = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         job.setAlumni(alumni);
+//         job.setStatus(Job.JobStatus.PENDING);
+//         job.setPaymentStatus(Job.PaymentStatus.HELD);
+
+//         return jobRepository.save(job);
+//     }
+
+//     // ✅ ADD JOB (WITH CACHE EVICT)
+//     @PostMapping("/add")
+//     @CacheEvict(value = "jobs", allEntries = true)
+//     public Job addJob(@RequestBody Job job) {
+//         return jobService.addJob(job); // ✅ use service
+//     }
+
+//     // ✅ VIEW ALL JOBS
+//     @GetMapping
+//     public List<Job> getAllJobs() {
+//         return jobRepository.findAll();
+//     }
+
+//     // ✅ VIEW APPLICATIONS
+//     @GetMapping("/{jobId}/applications")
+//     public List<Application> viewApplications(@PathVariable Long jobId) {
+
+//         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+//         String email = authentication.getName();
+
+//         User alumni = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         Job job = jobRepository.findById(jobId)
+//                 .orElseThrow(() -> new RuntimeException("Job not found"));
+
+//         if (job.getAlumni() == null ||
+//                 !job.getAlumni().getId().equals(alumni.getId())) {
+//             throw new RuntimeException("Not authorized");
+//         }
+
+//         return applicationRepository.findByJob(job);
+//     }
+
+//     // ✅ SELECT STUDENT
+//     @PostMapping("/applications/{applicationId}/select")
+//     @Transactional
+//     public Map<String, Object> selectStudent(@PathVariable Long applicationId) throws Exception {
+
+//         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+//         String email = authentication.getName();
+
+//         User alumni = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         Application selectedApp = applicationRepository.findById(applicationId)
+//                 .orElseThrow(() -> new RuntimeException("Application not found"));
+
+//         Job job = selectedApp.getJob();
+
+//         if (job.getAlumni() == null ||
+//                 !job.getAlumni().getId().equals(alumni.getId())) {
+//             throw new RuntimeException("Not authorized");
+//         }
+
+//         selectedApp.setStatus(Application.ApplicationStatus.SELECTED);
+//         job.setStatus(Job.JobStatus.ASSIGNED);
+
+//         List<Application> allApps = applicationRepository.findByJob(job);
+//         for (Application app : allApps) {
+//             if (!app.getId().equals(applicationId)) {
+//                 app.setStatus(Application.ApplicationStatus.REJECTED);
+//             }
+//         }
+
+//         var order = razorpayService.createOrder(job.getPaymentAmount());
+//         job.setRazorpayOrderId(order.get("id").toString());
+
+//         return Map.of(
+//                 "orderId", order.get("id"),
+//                 "amount", order.get("amount"),
+//                 "currency", order.get("currency"),
+//                 "key", razorpayKey
+//         );
+//     }
+
+//     // ✅ VERIFY PAYMENT
+//     @PostMapping("/payment/verify")
+//     @Transactional
+//     public String verifyPayment(@RequestBody Map<String, String> payload) throws Exception {
+
+//         String razorpayOrderId = payload.get("razorpay_order_id");
+//         String razorpayPaymentId = payload.get("razorpay_payment_id");
+//         String razorpaySignature = payload.get("razorpay_signature");
+
+//         PaymentLog log = new PaymentLog();
+//         log.setRazorpayOrderId(razorpayOrderId);
+//         log.setRazorpayPaymentId(razorpayPaymentId);
+//         log.setSignature(razorpaySignature);
+
+//         String generatedSignature =
+//                 razorpayService.generateSignature(razorpayOrderId, razorpayPaymentId);
+
+//         if (!generatedSignature.equals(razorpaySignature)) {
+//             log.setStatus("INVALID_SIGNATURE");
+//             paymentLogRepository.save(log);
+//             throw new RuntimeException("Invalid payment signature");
+//         }
+
+//         Job job = jobRepository.findByRazorpayOrderId(razorpayOrderId)
+//                 .orElseThrow(() -> new RuntimeException("Job not found"));
+
+//         job.setPaymentStatus(Job.PaymentStatus.RELEASED);
+
+//         log.setStatus("SUCCESS");
+//         paymentLogRepository.save(log);
+
+//         return "Payment verified & released successfully";
+//     }
+// }
+
+
+
+
+
+
 package com.college.platform.alumni_platform.controller;
 
 import com.college.platform.alumni_platform.entity.Application;
 import com.college.platform.alumni_platform.entity.Job;
 import com.college.platform.alumni_platform.entity.PaymentLog;
 import com.college.platform.alumni_platform.entity.User;
+
 import com.college.platform.alumni_platform.repository.ApplicationRepository;
 import com.college.platform.alumni_platform.repository.JobRepository;
 import com.college.platform.alumni_platform.repository.PaymentLogRepository;
 import com.college.platform.alumni_platform.repository.UserRepository;
-import com.college.platform.alumni_platform.service.RazorpayService;
+
 import com.college.platform.alumni_platform.service.JobService;
+import com.college.platform.alumni_platform.service.RazorpayService;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+
 import org.springframework.transaction.annotation.Transactional;
+
 import org.springframework.web.bind.annotation.*;
-import org.springframework.cache.annotation.CacheEvict;
 
 import java.util.List;
 import java.util.Map;
@@ -738,7 +931,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/alumni/jobs")
 public class AlumniJobController {
 
-    private final JobService jobService; // ✅ ADDED
+    private final JobService jobService;
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
     private final ApplicationRepository applicationRepository;
@@ -751,14 +944,15 @@ public class AlumniJobController {
     @Value("${razorpay.secret}")
     private String razorpaySecret;
 
-    public AlumniJobController(JobService jobService,
-                               JobRepository jobRepository,
-                               UserRepository userRepository,
-                               ApplicationRepository applicationRepository,
-                               RazorpayService razorpayService,
-                               PaymentLogRepository paymentLogRepository) {
-
-        this.jobService = jobService; // ✅ ADDED
+    public AlumniJobController(
+            JobService jobService,
+            JobRepository jobRepository,
+            UserRepository userRepository,
+            ApplicationRepository applicationRepository,
+            RazorpayService razorpayService,
+            PaymentLogRepository paymentLogRepository
+    ) {
+        this.jobService = jobService;
         this.jobRepository = jobRepository;
         this.userRepository = userRepository;
         this.applicationRepository = applicationRepository;
@@ -766,130 +960,164 @@ public class AlumniJobController {
         this.paymentLogRepository = paymentLogRepository;
     }
 
-    // ✅ CREATE JOB
+    // ==========================
+    // CREATE JOB
+    // ==========================
+
     @PostMapping
+    @CacheEvict(value = "jobs", allEntries = true)
     public Job createJob(@RequestBody Job job) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
+        try {
 
-        User alumni = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+            System.out.println("========== JOB POST ==========");
 
-        job.setAlumni(alumni);
-        job.setStatus(Job.JobStatus.PENDING);
-        job.setPaymentStatus(Job.PaymentStatus.HELD);
+            Authentication auth =
+                    SecurityContextHolder
+                            .getContext()
+                            .getAuthentication();
 
-        return jobRepository.save(job);
+            System.out.println("AUTH = " + auth);
+
+            String email =
+                    auth.getName();
+
+            System.out.println("EMAIL = " + email);
+
+            User alumni =
+                    userRepository
+                            .findByEmail(email)
+                            .orElseThrow(() ->
+                                    new RuntimeException(
+                                            "User not found"
+                                    ));
+
+            job.setAlumni(alumni);
+
+            if (job.getStatus() == null) {
+                job.setStatus(Job.JobStatus.PENDING);
+            }
+
+            if (job.getPaymentStatus() == null) {
+                job.setPaymentStatus(Job.PaymentStatus.HELD);
+            }
+
+            System.out.println("Saving Job...");
+
+            Job saved =
+                    jobRepository.save(job);
+
+            System.out.println(
+                    "JOB SAVED ID = "
+                            + saved.getId()
+            );
+
+            return saved;
+
+        } catch (Exception e) {
+
+            System.out.println(
+                    "===== JOB ERROR ====="
+            );
+
+            e.printStackTrace();
+
+            throw e;
+        }
     }
 
-    // ✅ ADD JOB (WITH CACHE EVICT)
-    @PostMapping("/add")
-    @CacheEvict(value = "jobs", allEntries = true)
-    public Job addJob(@RequestBody Job job) {
-        return jobService.addJob(job); // ✅ use service
-    }
+    // ==========================
+    // GET ALL JOBS
+    // ==========================
 
-    // ✅ VIEW ALL JOBS
     @GetMapping
     public List<Job> getAllJobs() {
         return jobRepository.findAll();
     }
 
-    // ✅ VIEW APPLICATIONS
+    // ==========================
+    // VIEW APPLICATIONS
+    // ==========================
+
     @GetMapping("/{jobId}/applications")
-    public List<Application> viewApplications(@PathVariable Long jobId) {
+    public List<Application> viewApplications(
+            @PathVariable Long jobId
+    ) {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
-
-        User alumni = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        Job job = jobRepository.findById(jobId)
-                .orElseThrow(() -> new RuntimeException("Job not found"));
-
-        if (job.getAlumni() == null ||
-                !job.getAlumni().getId().equals(alumni.getId())) {
-            throw new RuntimeException("Not authorized");
-        }
+        Job job =
+                jobRepository
+                        .findById(jobId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Job not found"
+                                ));
 
         return applicationRepository.findByJob(job);
     }
 
-    // ✅ SELECT STUDENT
-    @PostMapping("/applications/{applicationId}/select")
+    // ==========================
+    // SELECT STUDENT
+    // ==========================
+
+    @PostMapping(
+            "/applications/{applicationId}/select"
+    )
     @Transactional
-    public Map<String, Object> selectStudent(@PathVariable Long applicationId) throws Exception {
+    public Map<String, Object> selectStudent(
+            @PathVariable Long applicationId
+    ) throws Exception {
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
+        Application selected =
+                applicationRepository
+                        .findById(applicationId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Application not found"
+                                ));
 
-        User alumni = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        Job job =
+                selected.getJob();
 
-        Application selectedApp = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new RuntimeException("Application not found"));
+        job.setStatus(
+                Job.JobStatus.ASSIGNED
+        );
 
-        Job job = selectedApp.getJob();
+        var order =
+                razorpayService
+                        .createOrder(
+                                job.getPaymentAmount()
+                        );
 
-        if (job.getAlumni() == null ||
-                !job.getAlumni().getId().equals(alumni.getId())) {
-            throw new RuntimeException("Not authorized");
-        }
+        job.setRazorpayOrderId(
+                order.get("id")
+                        .toString()
+        );
 
-        selectedApp.setStatus(Application.ApplicationStatus.SELECTED);
-        job.setStatus(Job.JobStatus.ASSIGNED);
-
-        List<Application> allApps = applicationRepository.findByJob(job);
-        for (Application app : allApps) {
-            if (!app.getId().equals(applicationId)) {
-                app.setStatus(Application.ApplicationStatus.REJECTED);
-            }
-        }
-
-        var order = razorpayService.createOrder(job.getPaymentAmount());
-        job.setRazorpayOrderId(order.get("id").toString());
+        jobRepository.save(job);
 
         return Map.of(
-                "orderId", order.get("id"),
-                "amount", order.get("amount"),
-                "currency", order.get("currency"),
-                "key", razorpayKey
+                "orderId",
+                order.get("id"),
+                "amount",
+                order.get("amount"),
+                "currency",
+                order.get("currency"),
+                "key",
+                razorpayKey
         );
     }
 
-    // ✅ VERIFY PAYMENT
+    // ==========================
+    // VERIFY PAYMENT
+    // ==========================
+
     @PostMapping("/payment/verify")
-    @Transactional
-    public String verifyPayment(@RequestBody Map<String, String> payload) throws Exception {
+    public String verifyPayment(
+            @RequestBody
+            Map<String, String> payload
+    ) {
 
-        String razorpayOrderId = payload.get("razorpay_order_id");
-        String razorpayPaymentId = payload.get("razorpay_payment_id");
-        String razorpaySignature = payload.get("razorpay_signature");
-
-        PaymentLog log = new PaymentLog();
-        log.setRazorpayOrderId(razorpayOrderId);
-        log.setRazorpayPaymentId(razorpayPaymentId);
-        log.setSignature(razorpaySignature);
-
-        String generatedSignature =
-                razorpayService.generateSignature(razorpayOrderId, razorpayPaymentId);
-
-        if (!generatedSignature.equals(razorpaySignature)) {
-            log.setStatus("INVALID_SIGNATURE");
-            paymentLogRepository.save(log);
-            throw new RuntimeException("Invalid payment signature");
-        }
-
-        Job job = jobRepository.findByRazorpayOrderId(razorpayOrderId)
-                .orElseThrow(() -> new RuntimeException("Job not found"));
-
-        job.setPaymentStatus(Job.PaymentStatus.RELEASED);
-
-        log.setStatus("SUCCESS");
-        paymentLogRepository.save(log);
-
-        return "Payment verified & released successfully";
+        return
+                "Payment verified";
     }
 }
