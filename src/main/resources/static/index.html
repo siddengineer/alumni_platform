@@ -845,7 +845,6 @@ async function doLogin(){
   const pass= document.getElementById('lPass').value;
   if(!email||!pass){toast('Fill in all fields','err');return;}
   try{
-    // POST /auth/login
     const res=await fetch(`${API}/auth/login`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({email,password:pass})
@@ -857,13 +856,12 @@ async function doLogin(){
       toast(`Welcome! Signed in as ${d.role}`, 'ok');
       return;
     }
-  }catch{}
-  // DEMO mode
-  const found = DEMO.users.find(u=>u.email===email);
-  const role = found ? found.role : loginRole;
-  saveSession('demo_'+role,role,email);
-  routeRole(role,email);
-  toast(`Demo: Signed in as ${role}`,'ok');
+    // Show the actual error from backend
+    const err=await res.json().catch(()=>({}));
+    toast(err.error||'Login failed — check your email and password','err');
+  }catch(e){
+    toast('Cannot reach the server. Make sure the backend is running on port 8080.','err');
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -876,23 +874,18 @@ async function doRegister(){
   const role= regRole;
   if(!email||!pass||!pass2){toast('Fill in all fields','err');return;}
   if(pass!==pass2){toast('Passwords do not match','err');return;}
-  if(pass.length<6){toast('Password too short','err');return;}
+  if(pass.length<6){toast('Password too short (min 6 chars)','err');return;}
   try{
-    // POST /auth/register
     const res=await fetch(`${API}/auth/register`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({email,password:pass,role})
     });
-    if(res.ok){toast('Account created! Sign in.','ok');showPage('login');return;}
+    if(res.ok){toast('Account created! You can now sign in.','ok');showPage('login');return;}
     const d=await res.json().catch(()=>({}));
-    if(d.error){toast(d.error,'err');return;}
-  }catch{}
-  // Demo
-  if(!DEMO.users.find(u=>u.email===email)){
-    DEMO.users.push({id:DEMO.users.length+1,email,role});
+    toast(d.error||'Registration failed','err');
+  }catch(e){
+    toast('Cannot reach the server. Make sure the backend is running on port 8080.','err');
   }
-  toast(`Account created as ${role}! Sign in.`,'ok');
-  showPage('login');
 }
 
 function saveSession(t,r,e){
@@ -970,7 +963,8 @@ async function apiGet(url){
   try{
     const r=await fetch(API+url,{headers:ah()});
     if(r.ok) return await r.json();
-  }catch{}
+    console.warn('apiGet',url,'→',r.status,r.statusText);
+  }catch(e){console.error('apiGet',url,e);}
   return null;
 }
 async function apiPost(url,body){
@@ -993,7 +987,11 @@ async function apiPut(url){
 // ══════════════════════════════════════════════════════════
 //  JOB CARD RENDERER
 // ══════════════════════════════════════════════════════════
+// Cache of real job objects fetched from API, keyed by job id
+const jobCache = {};
+
 function jobCard(j, mode){
+  jobCache[j.id] = j; // store for later use by openJobDetail / openApplyModal / openApplicants
   const statusBadge=`<span class="badge badge-${j.status?.toLowerCase()}">${j.status}</span>`;
   const payBadge=`<span class="badge badge-${j.paymentStatus?.toLowerCase()}">${j.paymentStatus||'HELD'}</span>`;
   let actions='';
@@ -1033,17 +1031,20 @@ function jobCard(j, mode){
 // ══════════════════════════════════════════════════════════
 async function renderPubJobs(){
   const el=document.getElementById('pubJobsFeed');
-  const jobs=await apiGet('/api/v1/student/jobs') || DEMO.jobs.filter(j=>j.status==='APPROVED');
+  const jobs=await apiGet('/api/v1/student/jobs')||[];
   if(!jobs.length){el.innerHTML=emptyState('💼','No open positions right now');return;}
   el.innerHTML=jobs.map(j=>jobCard(j,'public')).join('');
 }
 
-function onGlobalSearch(){
+async function onGlobalSearch(){
   const q=document.getElementById('globalSearch').value.toLowerCase();
   if(!q) return;
   if(userRole==='STUDENT'){
-    const f=DEMO.jobs.filter(j=>j.status==='APPROVED'&&(j.title+j.requiredSkills).toLowerCase().includes(q));
-    document.getElementById('stuJobsFeed').innerHTML=f.map(j=>jobCard(j,'student')).join('')||emptyState('🔍','No results');
+    const el=document.getElementById('stuJobsFeed');
+    if(!el) return;
+    const jobs=await apiGet('/api/v1/student/jobs')||[];
+    const f=jobs.filter(j=>(j.title+j.requiredSkills).toLowerCase().includes(q));
+    el.innerHTML=f.length?f.map(j=>jobCard(j,'student')).join(''):emptyState('🔍','No results');
   }
 }
 
@@ -1053,25 +1054,28 @@ function onGlobalSearch(){
 async function loadStudJobs(){
   const el=document.getElementById('stuJobsFeed');
   if(!el) return;
-  const jobs=await apiGet('/api/v1/student/jobs') || DEMO.jobs.filter(j=>j.status==='APPROVED');
-  el.innerHTML=jobs.length?jobs.map(j=>jobCard(j,'student')).join(''):emptyState('💼','No jobs available right now');
+  el.innerHTML=`<div style="color:var(--muted);padding:16px">Loading…</div>`;
+  const jobs=await apiGet('/api/v1/student/jobs');
+  if(jobs===null){el.innerHTML=emptyState('⚠️','Could not load jobs — please check your connection or sign in again.');return;}
+  el.innerHTML=jobs.length?jobs.map(j=>jobCard(j,'student')).join(''):emptyState('💼','No approved jobs available right now');
 }
 
 async function loadStudApps(){
   const el=document.getElementById('stuAppsFeed');
   if(!el) return;
-  const apps = DEMO.applications.filter(a=>a.studentEmail===userEmail);
-  if(!apps.length){el.innerHTML=emptyState('📋','No applications yet — browse jobs and apply!');return;}
+  el.innerHTML=`<div style="color:var(--muted);padding:16px">Loading…</div>`;
+  const apps = await apiGet('/api/v1/student/applications');
+  if(!apps||!apps.length){el.innerHTML=emptyState('📋','No applications yet — browse jobs and apply!');return;}
   el.innerHTML=apps.map(a=>{
-    const j=DEMO.jobs.find(j=>j.id===a.jobId);
+    const j=a.job;
     const alreadySelected = a.status==='SELECTED';
     return `<div class="app-card">
       <div class="app-avatar" style="background:var(--blue)">${(userEmail||'S').substring(0,2).toUpperCase()}</div>
       <div class="app-info">
-        <div class="app-name">${j?.title||'Job #'+a.jobId}</div>
+        <div class="app-name">${j?.title||'Job #'+a.id}</div>
         <div class="app-email">Posted by ${j?.alumni?.email||'Alumni'}</div>
         <div class="jc-tags" style="margin-top:6px">
-          <span class="badge badge-${a.status.toLowerCase()}">${a.status}</span>
+          <span class="badge badge-${(a.status||'applied').toLowerCase()}">${a.status||'APPLIED'}</span>
           ${a.resumeLink?`<a href="${a.resumeLink}" target="_blank" class="chip chip-blue">📄 Resume →</a>`:''}
         </div>
         ${alreadySelected?`<div class="contact-block" style="margin-top:8px">
@@ -1085,14 +1089,15 @@ async function loadStudApps(){
 async function loadStudCerts(){
   const el=document.getElementById('stuCertsFeed');
   if(!el) return;
-  const certs=DEMO.certificates.filter(c=>c.studentEmail===userEmail);
+  el.innerHTML=`<div style="color:var(--muted);padding:16px">Loading…</div>`;
+  const certs=await apiGet('/api/v1/student/certificates')||[];
   if(!certs.length){el.innerHTML=emptyState('🏆','No certificates yet — get selected for a job to earn one!');return;}
   el.innerHTML=certs.map(c=>`
     <div class="cert-card">
       <div class="cert-icon">🏅</div>
       <div class="cert-info">
-        <div class="cert-name">${c.certificateName}</div>
-        <div class="cert-meta">Awarded for: ${c.jobTitle} · ${c.issuedAt||'Recently'}</div>
+        <div class="cert-name">${c.certificateName||'Job Completion Certificate'}</div>
+        <div class="cert-meta">Awarded for: ${c.job?.title||'—'} · ${c.issuedAt||'Recently'}</div>
       </div>
       <button class="btn btn-outline btn-sm" onclick="toast('Certificate download ready!','ok')">Download PDF</button>
     </div>`).join('');
@@ -1102,8 +1107,8 @@ async function loadStudCerts(){
 //  APPLY
 // ══════════════════════════════════════════════════════════
 function openJobDetail(jobId, mode){
-  const j=DEMO.jobs.find(x=>x.id===jobId);
-  if(!j) return;
+  const j=jobCache[jobId];
+  if(!j){toast('Job details not available','err');return;}
   document.getElementById('detTitle').textContent=j.title;
   document.getElementById('detDesc').textContent=j.description;
   document.getElementById('detDuration').textContent=j.duration;
@@ -1126,8 +1131,8 @@ function openJobDetail(jobId, mode){
 function openApplyModal(jobId){
   if(!token){showPage('login');return;}
   currentApplyJobId=jobId;
-  const j=DEMO.jobs.find(x=>x.id===jobId);
-  document.getElementById('applyJobName').textContent=j?j.title:'';
+  const j=jobCache[jobId];
+  document.getElementById('applyJobName').textContent=j?j.title:'Job #'+jobId;
   document.getElementById('applyResumeLink').value='';
   openM('applyModal');
 }
@@ -1136,18 +1141,14 @@ async function submitApply(){
   const resumeLink=document.getElementById('applyResumeLink').value.trim();
   if(!resumeLink){toast('Paste your resume link','err');return;}
   if(!resumeLink.startsWith('http')){toast('Please enter a valid URL starting with https://','err');return;}
-  // Try real API: POST /api/v1/student/applications/{jobId}?resumeLink=...
   try{
     const res=await fetch(`${API}/api/v1/student/applications/${currentApplyJobId}?resumeLink=${encodeURIComponent(resumeLink)}`,{method:'POST',headers:ah()});
     if(res.ok){closeM('applyModal');toast('Application submitted! ✓','ok');loadStudApps();return;}
     const e=await res.json().catch(()=>({}));
-    if(e.message){toast(e.message,'err');return;}
-  }catch{}
-  // Demo fallback
-  const already=DEMO.applications.find(a=>a.jobId===currentApplyJobId&&a.studentEmail===userEmail);
-  if(already){toast('You already applied for this job','err');return;}
-  DEMO.applications.push({id:DEMO.nextAppId++,jobId:currentApplyJobId,studentEmail:userEmail,resumeLink,status:'APPLIED'});
-  closeM('applyModal');toast('Application submitted! ✓','ok');loadStudApps();
+    toast(e.error||e.message||'Application failed','err');
+  }catch(e){
+    toast('Cannot reach server. Make sure backend is running.','err');
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1187,10 +1188,12 @@ function clearJobForm(){['jTitle','jDesc','jSkills','jDuration','jAmount'].forEa
 async function loadAlumJobs(){
   const el=document.getElementById('alumJobsFeed');
   if(!el) return;
-  // Real API: GET /api/v1/alumni/jobs
-  const fromAPI=await apiGet('/api/v1/alumni/jobs');
-  const jobs=fromAPI || DEMO.jobs.filter(j=>j.alumni?.email===userEmail);
+  el.innerHTML=`<div style="color:var(--muted);padding:16px">Loading…</div>`;
+  const jobs=await apiGet('/api/v1/alumni/jobs');
+  if(jobs===null){el.innerHTML=emptyState('⚠️','Could not load jobs — please try again.');return;}
   if(!jobs.length){el.innerHTML=emptyState('💼','No jobs posted yet. Click "Post a Job" to get started.');return;}
+  // Cache all jobs so openApplicants can find them by id
+  jobs.forEach(j=>{ jobCache[j.id]=j; });
   el.innerHTML=jobs.map(j=>`
     <div class="job-card">
       <div class="jc-top">
@@ -1216,18 +1219,19 @@ async function loadAlumJobs(){
 // ══════════════════════════════════════════════════════════
 async function openApplicants(jobId){
   currentApplicantsJobId=jobId;
-  const j=DEMO.jobs.find(x=>x.id===jobId);
-  document.getElementById('appModalTitle').textContent='Applicants for: '+j?.title;
+  const j=jobCache[jobId];
+  document.getElementById('appModalTitle').textContent='Applicants for: '+(j?.title||'Job #'+jobId);
   document.getElementById('appModalSub').textContent='Review resumes and select one student to hire.';
-  // Real API: GET /api/v1/alumni/jobs/{jobId}/applications
-  let apps=await apiGet(`/api/v1/alumni/jobs/${jobId}/applications`);
-  if(!apps) apps=DEMO.applications.filter(a=>a.jobId===jobId);
   const el=document.getElementById('applicantsList');
-  if(!apps.length){el.innerHTML=emptyState('👤','No applicants yet');openM('applicantsModal');return;}
+  el.innerHTML=`<div style="color:var(--muted);padding:16px">Loading…</div>`;
+  openM('applicantsModal');
+  const apps=await apiGet(`/api/v1/alumni/jobs/${jobId}/applications`);
+  if(apps===null){el.innerHTML=emptyState('⚠️','Could not load applicants — please try again.');return;}
+  if(!apps.length){el.innerHTML=emptyState('👤','No applicants yet');return;}
   el.innerHTML=apps.map(a=>{
-    const name=(a.studentEmail||a.student?.email||'Student');
+    const name=(a.student?.email||'Student');
     const init=name.substring(0,2).toUpperCase();
-    const email=a.studentEmail||a.student?.email||'';
+    const email=a.student?.email||'';
     const resumeLink=a.resumeLink||'';
     const isApplied=(a.status||'APPLIED')==='APPLIED';
     return `<div class="app-card">
@@ -1241,25 +1245,19 @@ async function openApplicants(jobId){
         </div>
         <div class="app-actions">
           ${email?`<a href="mailto:${email}" class="btn btn-ghost btn-xs">✉️ Contact</a>`:''}
-          ${isApplied?`<button class="btn btn-success btn-xs" onclick="selectApplicant(${a.id||a.jobId},${jobId},'${email}','${j?.title||''}',${j?.paymentAmount||0})">✓ Select &amp; Pay</button>`:''}
+          ${isApplied?`<button class="btn btn-success btn-xs" onclick="selectApplicant(${a.id},${jobId},'${email}','${j?.title||''}',${j?.paymentAmount||0})">✓ Select &amp; Pay</button>`:''}
         </div>
       </div>
     </div>`;
   }).join('');
-  openM('applicantsModal');
 }
 
 async function selectApplicant(appId,jobId,studentEmail,jobTitle,amount){
   closeM('applicantsModal');
-  // Real API: POST /api/v1/alumni/jobs/applications/{appId}/select
-  let orderData=await apiPost(`/api/v1/alumni/jobs/applications/${appId}/select`,{});
-  if(!orderData){
-    // Demo fallback
-    orderData={orderId:'order_demo_'+Date.now(),amount:amount*100,currency:'INR',key:RZP_KEY};
-    const app=DEMO.applications.find(a=>a.id===appId);
-    if(app){app.status='SELECTED';DEMO.applications.filter(a=>a.jobId===jobId&&a.id!==appId).forEach(a=>a.status='REJECTED');}
-    const j=DEMO.jobs.find(x=>x.id===jobId);
-    if(j){j.status='ASSIGNED';}
+  const orderData=await apiPost(`/api/v1/alumni/jobs/applications/${appId}/select`,{});
+  if(!orderData||orderData.error){
+    toast(orderData?.error||'Could not select student — please try again','err');
+    return;
   }
   currentPayData={...orderData,jobId,studentEmail,jobTitle};
   document.getElementById('pyJob').textContent=jobTitle;
@@ -1329,12 +1327,14 @@ function onPaymentSuccess(resp){
 //  ADMIN — OVERVIEW (with user/job counts)
 // ══════════════════════════════════════════════════════════
 async function loadAdminOverview(){
-  const totalStudents=DEMO.users.filter(u=>u.role==='STUDENT').length;
-  const totalAlumni  =DEMO.users.filter(u=>u.role==='ALUMNI').length;
-  const totalJobs    =DEMO.jobs.length;
-  const pendingJobs  =DEMO.jobs.filter(j=>j.status==='PENDING').length;
-  const completedJobs=DEMO.jobs.filter(j=>j.status==='COMPLETED').length;
-  const totalApps    =DEMO.applications.length;
+  // Fetch real stats from API
+  const stats=await apiGet('/api/v1/admin/stats')||{};
+  const totalStudents=stats.totalStudents??'—';
+  const totalAlumni  =stats.totalAlumni??'—';
+  const totalJobs    =stats.totalJobs??'—';
+  const pendingJobs  =stats.pendingJobs??'—';
+  const completedJobs=stats.completedJobs??'—';
+  const totalApps    =stats.totalApplications??'—';
   document.getElementById('adminStats').innerHTML=`
     <div class="stat-card"><div class="stat-num">${totalStudents}</div><div class="stat-label">Students</div></div>
     <div class="stat-card"><div class="stat-num">${totalAlumni}</div><div class="stat-label">Alumni</div></div>
@@ -1342,7 +1342,8 @@ async function loadAdminOverview(){
     <div class="stat-card"><div class="stat-num">${pendingJobs}</div><div class="stat-label">Pending</div></div>
     <div class="stat-card"><div class="stat-num">${completedJobs}</div><div class="stat-label">Completed</div></div>
     <div class="stat-card"><div class="stat-num">${totalApps}</div><div class="stat-label">Applications</div></div>`;
-  const pending=DEMO.jobs.filter(j=>j.status==='PENDING');
+  // Recent pending jobs from real API
+  const pending=await apiGet('/api/v1/admin/jobs/pending')||[];
   document.getElementById('adminRecentPending').innerHTML=pending.length
     ?pending.slice(0,3).map(j=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
         <div><strong>${j.title}</strong><br/><span style="font-size:.8rem;color:var(--muted)">${j.alumni?.email}</span></div>
@@ -1376,9 +1377,11 @@ async function adminApprove(jobId){
   toast('Job approved! ✓','ok');
   loadAdminPending();loadAdminOverview();
 }
-function adminReject(jobId){
-  const j=DEMO.jobs.find(x=>x.id===jobId);if(j) j.status='REJECTED';
-  toast('Job rejected','err');loadAdminPending();loadAdminOverview();
+async function adminReject(jobId){
+  const ok=await apiPut(`/api/v1/admin/jobs/${jobId}/reject`);
+  if(ok) toast('Job rejected','err');
+  else toast('Reject failed','err');
+  loadAdminPending();loadAdminOverview();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1387,14 +1390,16 @@ function adminReject(jobId){
 async function loadAdminAllJobs(){
   const tbody=document.getElementById('adminJobsBody');
   if(!tbody) return;
-  const jobs=await apiGet('/api/v1/alumni/jobs')||DEMO.jobs;
+  tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Loading…</td></tr>`;
+  const jobs=await apiGet('/api/v1/admin/jobs')||[];
+  if(!jobs.length){tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">No jobs found</td></tr>`;return;}
   tbody.innerHTML=jobs.map(j=>`
     <tr>
       <td>#${j.id}</td>
       <td><strong>${j.title}</strong></td>
       <td style="color:var(--muted);font-size:.82rem">${j.alumni?.email||'—'}</td>
       <td style="color:var(--green);font-weight:600">₹${(j.paymentAmount||0).toLocaleString()}</td>
-      <td><span class="badge badge-${j.status?.toLowerCase()}">${j.status}</span></td>
+      <td><span class="badge badge-${(j.status||'pending').toLowerCase()}">${j.status}</span></td>
       <td><span class="badge badge-${(j.paymentStatus||'held').toLowerCase()}">${j.paymentStatus||'HELD'}</span></td>
       <td>
         ${j.status==='APPROVED'?`<button class="btn btn-xs" style="background:var(--blue-light);color:var(--blue);border:1px solid var(--blue)" onclick="openCertModal(${j.id})">🏆 Issue Cert</button>`:''}
@@ -1409,7 +1414,10 @@ async function loadAdminAllJobs(){
 async function loadAdminUsers(){
   const tbody=document.getElementById('adminUsersBody');
   if(!tbody) return;
-  tbody.innerHTML=DEMO.users.map(u=>`
+  tbody.innerHTML=`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Loading…</td></tr>`;
+  const users=await apiGet('/api/v1/admin/users')||[];
+  if(!users.length){tbody.innerHTML=`<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">No users found</td></tr>`;return;}
+  tbody.innerHTML=users.map(u=>`
     <tr>
       <td>#${u.id}</td>
       <td>${u.email}</td>
@@ -1420,16 +1428,18 @@ async function loadAdminUsers(){
 // ══════════════════════════════════════════════════════════
 //  ADMIN — PAYMENT LOGS
 // ══════════════════════════════════════════════════════════
-function loadAdminPayments(){
+async function loadAdminPayments(){
   const tbody=document.getElementById('adminPayBody');
   if(!tbody) return;
-  if(!DEMO.payLogs.length){tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No payment transactions yet</td></tr>`;return;}
-  tbody.innerHTML=DEMO.payLogs.map(p=>`
+  tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">Loading…</td></tr>`;
+  const logs=await apiGet('/api/v1/admin/payments')||[];
+  if(!logs.length){tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No payment transactions yet</td></tr>`;return;}
+  tbody.innerHTML=logs.map(p=>`
     <tr>
-      <td style="font-size:.75rem;color:var(--muted)">${p.orderId}</td>
-      <td style="font-size:.75rem;color:var(--muted)">${p.paymentId}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${p.razorpayOrderId||'—'}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${p.razorpayPaymentId||'—'}</td>
       <td><span class="badge badge-${p.status==='SUCCESS'?'approved':'rejected'}">${p.status}</span></td>
-      <td style="color:var(--muted);font-size:.82rem">${p.time}</td>
+      <td style="color:var(--muted);font-size:.82rem">${p.createdAt||p.time||'—'}</td>
     </tr>`).join('');
 }
 
