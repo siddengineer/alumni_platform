@@ -1068,18 +1068,25 @@ async function loadStudApps(){
   if(!apps||!apps.length){el.innerHTML=emptyState('📋','No applications yet — browse jobs and apply!');return;}
   el.innerHTML=apps.map(a=>{
     const j=a.job;
+    // FIX: safely extract alumni email from nested object
+    const alumniEmail = j?.alumni?.email || j?.alumni?.name || null;
     const alreadySelected = a.status==='SELECTED';
     return `<div class="app-card">
       <div class="app-avatar" style="background:var(--blue)">${(userEmail||'S').substring(0,2).toUpperCase()}</div>
       <div class="app-info">
         <div class="app-name">${j?.title||'Job #'+a.id}</div>
-        <div class="app-email">Posted by ${j?.alumni?.email||'Alumni'}</div>
+        <div class="app-email">Posted by ${alumniEmail||'Alumni'}</div>
         <div class="jc-tags" style="margin-top:6px">
           <span class="badge badge-${(a.status||'applied').toLowerCase()}">${a.status||'APPLIED'}</span>
           ${a.resumeLink?`<a href="${a.resumeLink}" target="_blank" class="chip chip-blue">📄 Resume →</a>`:''}
         </div>
         ${alreadySelected?`<div class="contact-block" style="margin-top:8px">
-          <strong>🎉 You were selected!</strong><br/>Contact alumni: <a href="mailto:${j?.alumni?.email}" class="chip chip-blue">${j?.alumni?.email}</a>
+          <strong>🎉 You were selected!</strong><br/>
+          ${alumniEmail
+            ?`Contact alumni: <a href="mailto:${alumniEmail}" class="chip chip-blue">✉️ ${alumniEmail}</a>`
+            :'<span style="color:var(--muted)">Alumni contact not available</span>'
+          }<br/>
+          <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="openChat(${a.id},'${alumniEmail||''}','${j?.title||''}')">💬 Open Chat</button>
         </div>`:''}
       </div>
     </div>`;
@@ -1142,7 +1149,13 @@ async function submitApply(){
   if(!resumeLink){toast('Paste your resume link','err');return;}
   if(!resumeLink.startsWith('http')){toast('Please enter a valid URL starting with https://','err');return;}
   try{
-    const res=await fetch(`${API}/api/v1/student/applications/${currentApplyJobId}?resumeLink=${encodeURIComponent(resumeLink)}`,{method:'POST',headers:ah()});
+    const res=await fetch(`${API}/api/v1/student/applications/${currentApplyJobId}?resumeLink=${encodeURIComponent(resumeLink)}`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+token   // ← FIX: explicit JWT header
+      }
+    });
     if(res.ok){closeM('applyModal');toast('Application submitted! ✓','ok');loadStudApps();return;}
     const e=await res.json().catch(()=>({}));
     toast(e.error||e.message||'Application failed','err');
@@ -1161,10 +1174,15 @@ async function submitJob(){
   const dur=  document.getElementById('jDuration').value.trim();
   const amt=  parseFloat(document.getElementById('jAmount').value);
   if(!title||!desc||!skills||!dur||!amt){toast('Fill all fields','err');return;}
-  // Real API: POST /api/v1/alumni/jobs
+  if(!token){toast('You are not logged in. Please sign in again.','err');showPage('login');return;}
+  // FIX: POST /api/v1/alumni/jobs with Authorization header
   try{
     const res=await fetch(`${API}/api/v1/alumni/jobs`,{
-      method:'POST',headers:ah(),
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+token   // ← FIX: always include JWT
+      },
       body:JSON.stringify({title,description:desc,requiredSkills:skills,duration:dur,paymentAmount:amt})
     });
     if(res.ok){
@@ -1173,12 +1191,12 @@ async function submitJob(){
       showAlumSec('myjobs',document.querySelector('#page-alumni .snav-item'));
       return;
     }
-  }catch{}
-  // Demo
-  DEMO.jobs.push({id:DEMO.nextJobId++,title,description:desc,requiredSkills:skills,duration:dur,paymentAmount:amt,status:'PENDING',paymentStatus:'HELD',alumni:{id:99,email:userEmail}});
-  toast('Job submitted for approval! ✓','ok');
-  clearJobForm();
-  showAlumSec('myjobs',document.querySelector('#page-alumni .snav-item'));
+    // Show real backend error instead of silently falling to demo
+    const e=await res.json().catch(()=>({}));
+    toast(e.error||e.message||'Failed to post job (status '+res.status+')','err');
+  }catch(err){
+    toast('Cannot reach server. Is it running on port 8080?','err');
+  }
 }
 function clearJobForm(){['jTitle','jDesc','jSkills','jDuration','jAmount'].forEach(id=>document.getElementById(id).value='');}
 
@@ -1246,6 +1264,7 @@ async function openApplicants(jobId){
         <div class="app-actions">
           ${email?`<a href="mailto:${email}" class="btn btn-ghost btn-xs">✉️ Contact</a>`:''}
           ${isApplied?`<button class="btn btn-success btn-xs" onclick="selectApplicant(${a.id},${jobId},'${email}','${j?.title||''}',${j?.paymentAmount||0})">✓ Select &amp; Pay</button>`:''}
+          <button class="btn btn-outline btn-xs" onclick="openChatFromAlumni(${a.id},'${email}','${j?.title||''}')">💬 Chat</button>
         </div>
       </div>
     </div>`;
@@ -1265,7 +1284,9 @@ async function selectApplicant(appId,jobId,studentEmail,jobTitle,amount){
   document.getElementById('pyStudentEmail').textContent=studentEmail;
   document.getElementById('pyContactEmail').textContent=studentEmail;
   document.getElementById('pyOrderId').textContent=orderData.orderId;
-  document.getElementById('pyAmount').textContent='₹'+((orderData.amount||0)/100).toLocaleString();
+  // Razorpay returns amount in paise (1 INR = 100 paise), so divide by 100
+  const displayAmt = orderData.amount > 10000 ? (orderData.amount/100) : orderData.amount;
+  document.getElementById('pyAmount').textContent='₹'+displayAmt.toLocaleString();
   openM('paymentModal');
 }
 
@@ -1296,15 +1317,26 @@ function triggerRazorpay(){
 }
 
 async function verifyPayment(resp){
-  // Real API: POST /api/v1/alumni/jobs/payment/verify
   try{
     const res=await fetch(`${API}/api/v1/alumni/jobs/payment/verify`,{
-      method:'POST',headers:ah(),
-      body:JSON.stringify({razorpay_order_id:resp.razorpay_order_id,razorpay_payment_id:resp.razorpay_payment_id,razorpay_signature:resp.razorpay_signature})
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({
+        razorpay_order_id:resp.razorpay_order_id,
+        razorpay_payment_id:resp.razorpay_payment_id,
+        razorpay_signature:resp.razorpay_signature
+      })
     });
-    if(res.ok){onPaymentSuccess(resp);return;}
-  }catch{}
-  onPaymentSuccess(resp);
+    if(res.ok){
+      onPaymentSuccess(resp);
+      return;
+    }
+    const e=await res.json().catch(()=>({}));
+    toast('Payment verification failed: '+(e.error||'Invalid signature'),'err');
+  }catch(err){
+    toast('Payment done but verification failed — contact admin','err');
+    onPaymentSuccess(resp); // still mark as done locally
+  }
 }
 
 function simulatePaymentSuccess(){
@@ -1315,11 +1347,7 @@ function simulatePaymentSuccess(){
 function onPaymentSuccess(resp){
   closeM('paymentModal');
   toast('Payment successful! Student hired ✓','ok');
-  // Log payment
-  DEMO.payLogs.push({orderId:currentPayData.orderId,paymentId:resp.razorpay_payment_id,status:'SUCCESS',time:new Date().toLocaleString()});
-  // Update job payment status
-  const j=DEMO.jobs.find(x=>x.id===currentPayData.jobId);
-  if(j) j.paymentStatus='RELEASED';
+  // Reload jobs from real API to reflect updated payment status
   loadAlumJobs();
 }
 
@@ -1379,8 +1407,7 @@ async function adminApprove(jobId){
 }
 async function adminReject(jobId){
   const ok=await apiPut(`/api/v1/admin/jobs/${jobId}/reject`);
-  if(ok) toast('Job rejected','err');
-  else toast('Reject failed','err');
+  toast(ok?'Job rejected':'Reject failed — try again','err');
   loadAdminPending();loadAdminOverview();
 }
 
@@ -1446,32 +1473,45 @@ async function loadAdminPayments(){
 // ══════════════════════════════════════════════════════════
 //  CERTIFICATES (Admin issues)
 // ══════════════════════════════════════════════════════════
-function openCertModal(jobId){
-  const j=DEMO.jobs.find(x=>x.id===jobId);
+async function openCertModal(jobId){
   currentCertJobId=jobId;
-  // Find selected student for this job
-  const app=DEMO.applications.find(a=>a.jobId===jobId&&a.status==='SELECTED');
-  currentCertStudentEmail=app?app.studentEmail:'';
+  // FIX: fetch real applications from API to find selected student
+  const apps=await apiGet(`/api/v1/alumni/jobs/${jobId}/applications`)||[];
+  const selected=apps.find(a=>a.status==='SELECTED');
+  currentCertStudentEmail=selected?selected.student?.email:'';
+  const jobs=await apiGet('/api/v1/admin/jobs')||[];
+  const j=jobs.find(x=>x.id===jobId);
   document.getElementById('certModalSub').textContent='Job: '+(j?.title||'');
   document.getElementById('certStudentEmail').value=currentCertStudentEmail||'(No student selected yet)';
   document.getElementById('certName').value='Job Completion Certificate';
   openM('certModal');
 }
 
-function issueCert(){
+async function issueCert(){
   if(!currentCertStudentEmail){toast('No student selected for this job yet','err');return;}
   const certName=document.getElementById('certName').value.trim();
-  const j=DEMO.jobs.find(x=>x.id===currentCertJobId);
-  DEMO.certificates.push({
-    id:DEMO.nextCertId++,
-    studentEmail:currentCertStudentEmail,
-    jobTitle:j?.title||'',
-    certificateName:certName,
-    issuedAt:new Date().toLocaleDateString()
-  });
-  if(j) j.status='COMPLETED';
-  closeM('certModal');
-  toast('Certificate issued to '+currentCertStudentEmail+' ✓','ok');
+  // Find studentId from email
+  const users=await apiGet('/api/v1/admin/users')||[];
+  const student=users.find(u=>u.email===currentCertStudentEmail);
+  if(!student){toast('Student not found in system','err');return;}
+  // FIX: call real API POST /api/v1/admin/jobs/{jobId}/certificate
+  try{
+    const res=await fetch(`${API}/api/v1/admin/jobs/${currentCertJobId}/certificate`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({studentId:student.id,certificateName:certName})
+    });
+    if(res.ok){
+      closeM('certModal');
+      toast('Certificate issued to '+currentCertStudentEmail+' ✓','ok');
+      loadAdminAllJobs();
+      return;
+    }
+    const e=await res.json().catch(()=>({}));
+    toast(e.error||'Failed to issue certificate','err');
+  }catch{
+    toast('Cannot reach server','err');
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1510,6 +1550,114 @@ if(token&&userRole&&userEmail){
   s.src='https://checkout.razorpay.com/v1/checkout.js';
   document.head.appendChild(s);
 })();
+</script>
+
+<!-- ═══════ CHAT MODAL ═══════ -->
+<div class="overlay" id="chatModal">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;height:70vh;padding:0;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div class="modal-title" id="chatTitle" style="margin:0">Chat</div>
+        <div class="modal-sub" id="chatSub" style="margin:0;font-size:.8rem"></div>
+      </div>
+      <button class="modal-close" style="position:static" onclick="closeChat()">✕</button>
+    </div>
+    <div id="chatMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="text-align:center;color:var(--muted);font-size:.85rem">Loading messages…</div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
+      <input id="chatInput" placeholder="Type a message…" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text);outline:none;font-size:.9rem"
+        onkeydown="if(event.key==='Enter')sendChatMsg()"/>
+      <button class="btn btn-primary btn-sm" onclick="sendChatMsg()" style="border-radius:50%;width:38px;height:38px;padding:0;flex-shrink:0">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ══════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════
+let currentChatAppId = null;
+let chatPollInterval = null;
+
+async function openChat(applicationId, alumniEmail, jobTitle){
+  currentChatAppId = applicationId;
+  document.getElementById('chatTitle').textContent = '💬 ' + (jobTitle||'Chat');
+  document.getElementById('chatSub').textContent = alumniEmail ? 'with '+alumniEmail : '';
+  openM('chatModal');
+  await loadChatMessages();
+  // Poll for new messages every 5 seconds
+  clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(loadChatMessages, 5000);
+}
+
+function closeChat(){
+  closeM('chatModal');
+  clearInterval(chatPollInterval);
+  chatPollInterval = null;
+}
+
+async function loadChatMessages(){
+  if(!currentChatAppId) return;
+  const msgs = await apiGet(`/api/v1/chat/${currentChatAppId}`);
+  const el = document.getElementById('chatMessages');
+  if(!msgs){ el.innerHTML=`<div style="text-align:center;color:var(--muted);font-size:.85rem">Could not load messages</div>`; return; }
+  if(!msgs.length){ el.innerHTML=`<div style="text-align:center;color:var(--muted);font-size:.85rem;padding:20px">No messages yet. Say hello! 👋</div>`; return; }
+  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  el.innerHTML = msgs.map(m=>{
+    const mine = m.sender?.email === userEmail;
+    const time = m.sentAt ? new Date(m.sentAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div style="display:flex;flex-direction:column;align-items:${mine?'flex-end':'flex-start'}">
+      <div style="
+        max-width:75%;padding:9px 13px;border-radius:${mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};
+        background:${mine?'var(--blue)':'var(--bg)'};
+        color:${mine?'#fff':'var(--text)'};
+        border:1px solid ${mine?'var(--blue)':'var(--border)'};
+        font-size:.88rem;line-height:1.5;word-break:break-word;
+      ">${escHtml(m.message)}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${mine?'You':m.sender?.email||'?'} · ${time}</div>
+    </div>`;
+  }).join('');
+  if(wasAtBottom) el.scrollTop = el.scrollHeight;
+}
+
+async function sendChatMsg(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if(!text || !currentChatAppId) return;
+  input.value = '';
+  try{
+    const res = await fetch(`${API}/api/v1/chat/${currentChatAppId}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({message: text})
+    });
+    if(res.ok){ await loadChatMessages(); return; }
+    toast('Failed to send message','err');
+    input.value = text; // restore on failure
+  }catch{
+    toast('Cannot reach server','err');
+    input.value = text;
+  }
+}
+
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Also allow alumni to open chat from applicants modal
+async function openChatFromAlumni(applicationId, studentEmail, jobTitle){
+  currentChatAppId = applicationId;
+  document.getElementById('chatTitle').textContent = '💬 ' + (jobTitle||'Chat');
+  document.getElementById('chatSub').textContent = studentEmail ? 'with '+studentEmail : '';
+  closeM('applicantsModal');
+  openM('chatModal');
+  await loadChatMessages();
+  clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(loadChatMessages, 5000);
+}
+
 </script>
 </body>
 </html>

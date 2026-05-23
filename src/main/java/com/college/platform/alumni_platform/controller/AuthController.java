@@ -418,10 +418,6 @@
 // }
 
 
-
-
-
-
 package com.college.platform.alumni_platform.controller;
 
 import com.college.platform.alumni_platform.config.JwtUtil;
@@ -459,6 +455,7 @@ public class AuthController {
         String email    = request.get("email");
         String password = request.get("password");
         String role     = request.get("role");
+        String name     = request.get("name"); // ← now read from request
 
         if (email == null || password == null || role == null) {
             return ResponseEntity.badRequest()
@@ -476,6 +473,7 @@ public class AuthController {
                     .body(Map.of("error", "Password must be at least 6 characters"));
         }
 
+        // ← FIX: block duplicate email registration
         if (userRepository.findByEmail(email).isPresent()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Email already registered"));
@@ -485,6 +483,9 @@ public class AuthController {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
         user.setRole(role);
+        user.setName(name);           // ← FIX: save the name
+        user.setStatus("ACTIVE");     // ← FIX: set default status
+
         userRepository.save(user);
 
         return ResponseEntity.ok(Map.of("message", "Registered successfully as " + role));
@@ -519,6 +520,7 @@ public class AuthController {
                 "token",   token,
                 "role",    user.getRole(),
                 "email",   user.getEmail(),
+                "name",    user.getName() != null ? user.getName() : "",  // ← also return name
                 "id",      user.getId(),
                 "message", "Login successful"
         ));

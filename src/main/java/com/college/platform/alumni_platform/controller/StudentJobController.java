@@ -195,16 +195,113 @@
 
 
 
+// package com.college.platform.alumni_platform.controller;
+
+// import com.college.platform.alumni_platform.entity.Application;
+// import com.college.platform.alumni_platform.entity.Certificate;
+// import com.college.platform.alumni_platform.entity.Job;
+// import com.college.platform.alumni_platform.entity.User;
+// import com.college.platform.alumni_platform.repository.ApplicationRepository;
+// import com.college.platform.alumni_platform.repository.CertificateRepository;
+// import com.college.platform.alumni_platform.repository.JobRepository;
+// import com.college.platform.alumni_platform.repository.UserRepository;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.core.Authentication;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+// import java.util.Map;
+
+// @RestController
+// @RequestMapping("/api/v1/student")
+// public class StudentJobController {
+
+//     private final JobRepository jobRepository;
+//     private final ApplicationRepository applicationRepository;
+//     private final UserRepository userRepository;
+//     private final CertificateRepository certificateRepository;
+
+//     public StudentJobController(JobRepository jobRepository,
+//                                 ApplicationRepository applicationRepository,
+//                                 UserRepository userRepository,
+//                                 CertificateRepository certificateRepository) {
+//         this.jobRepository = jobRepository;
+//         this.applicationRepository = applicationRepository;
+//         this.userRepository = userRepository;
+//         this.certificateRepository = certificateRepository;
+//     }
+
+//     // ── VIEW APPROVED JOBS ONLY ──
+//     @GetMapping("/jobs")
+//     public List<Job> getApprovedJobs() {
+//         return jobRepository.findByStatus(Job.JobStatus.APPROVED);
+//     }
+
+//     // ── APPLY FOR A JOB ──
+//     @PostMapping("/applications/{jobId}")
+//     public ResponseEntity<?> apply(@PathVariable Long jobId,
+//                                    @RequestParam String resumeLink,
+//                                    Authentication authentication) {
+//         String email = authentication.getName();
+
+//         User student = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("Student not found"));
+
+//         Job job = jobRepository.findById(jobId)
+//                 .orElseThrow(() -> new RuntimeException("Job not found"));
+
+//         if (job.getStatus() != Job.JobStatus.APPROVED) {
+//             return ResponseEntity.badRequest()
+//                     .body(Map.of("error", "Job is not open for applications"));
+//         }
+
+//         if (applicationRepository.findByStudentAndJob(student, job).isPresent()) {
+//             return ResponseEntity.badRequest()
+//                     .body(Map.of("error", "You already applied for this job"));
+//         }
+
+//         Application application = new Application();
+//         application.setStudent(student);
+//         application.setJob(job);
+//         application.setResumeLink(resumeLink);
+//         applicationRepository.save(application);
+
+//         return ResponseEntity.ok(application);
+//     }
+
+//     // ── GET MY APPLICATIONS ──
+//     @GetMapping("/applications")
+//     public ResponseEntity<?> getMyApplications(Authentication authentication) {
+//         String email = authentication.getName();
+//         User student = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("Student not found"));
+//         return ResponseEntity.ok(applicationRepository.findByStudent(student));
+//     }
+
+//     // ── GET MY CERTIFICATES ──
+//     @GetMapping("/certificates")
+//     public ResponseEntity<?> getMyCertificates(Authentication authentication) {
+//         String email = authentication.getName();
+//         User student = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("Student not found"));
+//         List<Certificate> certs = certificateRepository.findByStudent(student);
+//         return ResponseEntity.ok(certs);
+//     }
+// }
+
+
+
+
+
 package com.college.platform.alumni_platform.controller;
 
-import com.college.platform.alumni_platform.entity.Application;
 import com.college.platform.alumni_platform.entity.Certificate;
 import com.college.platform.alumni_platform.entity.Job;
 import com.college.platform.alumni_platform.entity.User;
-import com.college.platform.alumni_platform.repository.ApplicationRepository;
 import com.college.platform.alumni_platform.repository.CertificateRepository;
 import com.college.platform.alumni_platform.repository.JobRepository;
 import com.college.platform.alumni_platform.repository.UserRepository;
+import com.college.platform.alumni_platform.service.ApplicationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -217,68 +314,47 @@ import java.util.Map;
 public class StudentJobController {
 
     private final JobRepository jobRepository;
-    private final ApplicationRepository applicationRepository;
+    private final ApplicationService applicationService;
     private final UserRepository userRepository;
     private final CertificateRepository certificateRepository;
 
     public StudentJobController(JobRepository jobRepository,
-                                ApplicationRepository applicationRepository,
+                                ApplicationService applicationService,
                                 UserRepository userRepository,
                                 CertificateRepository certificateRepository) {
         this.jobRepository = jobRepository;
-        this.applicationRepository = applicationRepository;
+        this.applicationService = applicationService;
         this.userRepository = userRepository;
         this.certificateRepository = certificateRepository;
     }
 
-    // ── VIEW APPROVED JOBS ONLY ──
+    // GET /api/v1/student/jobs  — view all approved jobs
     @GetMapping("/jobs")
     public List<Job> getApprovedJobs() {
         return jobRepository.findByStatus(Job.JobStatus.APPROVED);
     }
 
-    // ── APPLY FOR A JOB ──
+    // POST /api/v1/student/applications/{jobId}?resumeLink=...  — apply for a job
     @PostMapping("/applications/{jobId}")
     public ResponseEntity<?> apply(@PathVariable Long jobId,
                                    @RequestParam String resumeLink,
                                    Authentication authentication) {
-        String email = authentication.getName();
-
-        User student = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        Job job = jobRepository.findById(jobId)
-                .orElseThrow(() -> new RuntimeException("Job not found"));
-
-        if (job.getStatus() != Job.JobStatus.APPROVED) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Job is not open for applications"));
+        try {
+            var application = applicationService.apply(authentication.getName(), jobId, resumeLink);
+            return ResponseEntity.ok(application);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-
-        if (applicationRepository.findByStudentAndJob(student, job).isPresent()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "You already applied for this job"));
-        }
-
-        Application application = new Application();
-        application.setStudent(student);
-        application.setJob(job);
-        application.setResumeLink(resumeLink);
-        applicationRepository.save(application);
-
-        return ResponseEntity.ok(application);
     }
 
-    // ── GET MY APPLICATIONS ──
+    // GET /api/v1/student/applications  — view my own applications
     @GetMapping("/applications")
     public ResponseEntity<?> getMyApplications(Authentication authentication) {
-        String email = authentication.getName();
-        User student = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-        return ResponseEntity.ok(applicationRepository.findByStudent(student));
+        var applications = applicationService.getApplicationsForStudent(authentication.getName());
+        return ResponseEntity.ok(applications);
     }
 
-    // ── GET MY CERTIFICATES ──
+    // GET /api/v1/student/certificates  — view my certificates
     @GetMapping("/certificates")
     public ResponseEntity<?> getMyCertificates(Authentication authentication) {
         String email = authentication.getName();
