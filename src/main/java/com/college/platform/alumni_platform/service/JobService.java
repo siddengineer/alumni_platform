@@ -106,15 +106,71 @@
 
 
 
+// package com.college.platform.alumni_platform.service;
+
+// import com.college.platform.alumni_platform.entity.Job;
+// import com.college.platform.alumni_platform.entity.User;
+// import com.college.platform.alumni_platform.repository.JobRepository;
+
+// import org.slf4j.Logger;
+// import org.slf4j.LoggerFactory;
+
+// import org.springframework.cache.annotation.CacheEvict;
+// import org.springframework.cache.annotation.Cacheable;
+// import org.springframework.stereotype.Service;
+
+// import java.util.List;
+
+// @Service
+// public class JobService {
+
+//     private static final Logger logger =
+//             LoggerFactory.getLogger(JobService.class);
+
+//     private final JobRepository jobRepository;
+
+//     public JobService(JobRepository jobRepository) {
+//         this.jobRepository = jobRepository;
+//     }
+
+//     @Cacheable("jobs")
+//     public List<Job> getAllJobs() {
+
+//         logger.info("🔥 Fetching jobs from DB...");
+
+//         return jobRepository.findAll();
+//     }
+
+//     @CacheEvict(value = "jobs", allEntries = true)
+//     public Job addJob(Job job, User alumni) {
+
+//         logger.info("🧹 Cache cleared (new job added)");
+
+//         job.setAlumni(alumni);
+
+//         if (job.getStatus() == null) {
+//             job.setStatus(Job.JobStatus.PENDING);
+//         }
+
+//         if (job.getPaymentStatus() == null) {
+//             job.setPaymentStatus(Job.PaymentStatus.HELD);
+//         }
+
+//         return jobRepository.save(job);
+//     }
+// }
+
+
+
+
+
 package com.college.platform.alumni_platform.service;
 
 import com.college.platform.alumni_platform.entity.Job;
 import com.college.platform.alumni_platform.entity.User;
 import com.college.platform.alumni_platform.repository.JobRepository;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -124,38 +180,33 @@ import java.util.List;
 @Service
 public class JobService {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(JobService.class);
-
+    private static final Logger logger = LoggerFactory.getLogger(JobService.class);
     private final JobRepository jobRepository;
 
     public JobService(JobRepository jobRepository) {
         this.jobRepository = jobRepository;
     }
 
+    // Returns ALL jobs (for admin)
     @Cacheable("jobs")
     public List<Job> getAllJobs() {
-
-        logger.info("🔥 Fetching jobs from DB...");
-
+        logger.info("Fetching ALL jobs from DB...");
         return jobRepository.findAll();
     }
 
-    @CacheEvict(value = "jobs", allEntries = true)
+    // Returns only APPROVED jobs (for students)
+    @Cacheable("approvedJobs")
+    public List<Job> getApprovedJobs() {
+        logger.info("Fetching APPROVED jobs from DB...");
+        return jobRepository.findByStatus(Job.JobStatus.APPROVED);
+    }
+
+    @CacheEvict(value = {"jobs", "approvedJobs"}, allEntries = true)
     public Job addJob(Job job, User alumni) {
-
-        logger.info("🧹 Cache cleared (new job added)");
-
+        logger.info("New job added, cache cleared");
         job.setAlumni(alumni);
-
-        if (job.getStatus() == null) {
-            job.setStatus(Job.JobStatus.PENDING);
-        }
-
-        if (job.getPaymentStatus() == null) {
-            job.setPaymentStatus(Job.PaymentStatus.HELD);
-        }
-
+        if (job.getStatus() == null) job.setStatus(Job.JobStatus.PENDING);
+        if (job.getPaymentStatus() == null) job.setPaymentStatus(Job.PaymentStatus.HELD);
         return jobRepository.save(job);
     }
 }

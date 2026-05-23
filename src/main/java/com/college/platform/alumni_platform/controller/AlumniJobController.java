@@ -897,31 +897,24 @@
 
 
 
-
-
 package com.college.platform.alumni_platform.controller;
 
 import com.college.platform.alumni_platform.entity.Application;
 import com.college.platform.alumni_platform.entity.Job;
 import com.college.platform.alumni_platform.entity.PaymentLog;
 import com.college.platform.alumni_platform.entity.User;
-
 import com.college.platform.alumni_platform.repository.ApplicationRepository;
 import com.college.platform.alumni_platform.repository.JobRepository;
 import com.college.platform.alumni_platform.repository.PaymentLogRepository;
 import com.college.platform.alumni_platform.repository.UserRepository;
-
 import com.college.platform.alumni_platform.service.JobService;
 import com.college.platform.alumni_platform.service.RazorpayService;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
-
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-
 import org.springframework.transaction.annotation.Transactional;
-
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -941,17 +934,12 @@ public class AlumniJobController {
     @Value("${razorpay.key}")
     private String razorpayKey;
 
-    @Value("${razorpay.secret}")
-    private String razorpaySecret;
-
-    public AlumniJobController(
-            JobService jobService,
-            JobRepository jobRepository,
-            UserRepository userRepository,
-            ApplicationRepository applicationRepository,
-            RazorpayService razorpayService,
-            PaymentLogRepository paymentLogRepository
-    ) {
+    public AlumniJobController(JobService jobService,
+                               JobRepository jobRepository,
+                               UserRepository userRepository,
+                               ApplicationRepository applicationRepository,
+                               RazorpayService razorpayService,
+                               PaymentLogRepository paymentLogRepository) {
         this.jobService = jobService;
         this.jobRepository = jobRepository;
         this.userRepository = userRepository;
@@ -960,164 +948,139 @@ public class AlumniJobController {
         this.paymentLogRepository = paymentLogRepository;
     }
 
-    // ==========================
-    // CREATE JOB
-    // ==========================
-
+    // ── CREATE JOB ──
     @PostMapping
     @CacheEvict(value = "jobs", allEntries = true)
-    public Job createJob(@RequestBody Job job) {
+    public ResponseEntity<?> createJob(@RequestBody Job job) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        User alumni = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found: " + email));
+        job.setAlumni(alumni);
+        job.setStatus(Job.JobStatus.PENDING);
+        job.setPaymentStatus(Job.PaymentStatus.HELD);
+        Job saved = jobRepository.save(job);
+        return ResponseEntity.ok(saved);
+    }
 
+    // ── GET MY JOBS (this alumni's jobs only) ──
+    @GetMapping
+    public ResponseEntity<?> getMyJobs() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        User alumni = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        List<Job> jobs = jobRepository.findByAlumni(alumni);
+        return ResponseEntity.ok(jobs);
+    }
+
+    // ── VIEW APPLICANTS FOR A JOB ──
+    @GetMapping("/{jobId}/applications")
+    public ResponseEntity<?> viewApplications(@PathVariable Long jobId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        User alumni = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Job job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new RuntimeException("Job not found"));
+        // Security: only job owner can see applicants
+        if (job.getAlumni() == null || !job.getAlumni().getId().equals(alumni.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Not authorized"));
+        }
+        return ResponseEntity.ok(applicationRepository.findByJob(job));
+    }
+
+    // ── SELECT STUDENT → CREATE RAZORPAY ORDER ──
+    @PostMapping("/applications/{applicationId}/select")
+    @Transactional
+    public ResponseEntity<?> selectStudent(@PathVariable Long applicationId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        User alumni = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Application selectedApp = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new RuntimeException("Application not found"));
+
+        Job job = selectedApp.getJob();
+
+        // Security check
+        if (job.getAlumni() == null || !job.getAlumni().getId().equals(alumni.getId())) {
+            return ResponseEntity.status(403).body(Map.of("error", "Not authorized"));
+        }
+
+        // Mark selected student
+        selectedApp.setStatus(Application.ApplicationStatus.SELECTED);
+        applicationRepository.save(selectedApp);
+
+        // Reject all other applicants
+        List<Application> allApps = applicationRepository.findByJob(job);
+        for (Application app : allApps) {
+            if (!app.getId().equals(applicationId)) {
+                app.setStatus(Application.ApplicationStatus.REJECTED);
+                applicationRepository.save(app);
+            }
+        }
+
+        // Update job status
+        job.setStatus(Job.JobStatus.ASSIGNED);
+
+        // Create Razorpay Order
         try {
+            var order = razorpayService.createOrder(job.getPaymentAmount());
+            job.setRazorpayOrderId(order.get("id").toString());
+            jobRepository.save(job);
 
-            System.out.println("========== JOB POST ==========");
-
-            Authentication auth =
-                    SecurityContextHolder
-                            .getContext()
-                            .getAuthentication();
-
-            System.out.println("AUTH = " + auth);
-
-            String email =
-                    auth.getName();
-
-            System.out.println("EMAIL = " + email);
-
-            User alumni =
-                    userRepository
-                            .findByEmail(email)
-                            .orElseThrow(() ->
-                                    new RuntimeException(
-                                            "User not found"
-                                    ));
-
-            job.setAlumni(alumni);
-
-            if (job.getStatus() == null) {
-                job.setStatus(Job.JobStatus.PENDING);
-            }
-
-            if (job.getPaymentStatus() == null) {
-                job.setPaymentStatus(Job.PaymentStatus.HELD);
-            }
-
-            System.out.println("Saving Job...");
-
-            Job saved =
-                    jobRepository.save(job);
-
-            System.out.println(
-                    "JOB SAVED ID = "
-                            + saved.getId()
-            );
-
-            return saved;
-
+            return ResponseEntity.ok(Map.of(
+                    "orderId",  order.get("id"),
+                    "amount",   order.get("amount"),
+                    "currency", order.get("currency"),
+                    "key",      razorpayKey,
+                    "studentEmail", selectedApp.getStudent().getEmail()
+            ));
         } catch (Exception e) {
-
-            System.out.println(
-                    "===== JOB ERROR ====="
-            );
-
-            e.printStackTrace();
-
-            throw e;
+            jobRepository.save(job);
+            return ResponseEntity.status(500).body(Map.of("error", "Razorpay order creation failed: " + e.getMessage()));
         }
     }
 
-    // ==========================
-    // GET ALL JOBS
-    // ==========================
-
-    @GetMapping
-    public List<Job> getAllJobs() {
-        return jobRepository.findAll();
-    }
-
-    // ==========================
-    // VIEW APPLICATIONS
-    // ==========================
-
-    @GetMapping("/{jobId}/applications")
-    public List<Application> viewApplications(
-            @PathVariable Long jobId
-    ) {
-
-        Job job =
-                jobRepository
-                        .findById(jobId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Job not found"
-                                ));
-
-        return applicationRepository.findByJob(job);
-    }
-
-    // ==========================
-    // SELECT STUDENT
-    // ==========================
-
-    @PostMapping(
-            "/applications/{applicationId}/select"
-    )
-    @Transactional
-    public Map<String, Object> selectStudent(
-            @PathVariable Long applicationId
-    ) throws Exception {
-
-        Application selected =
-                applicationRepository
-                        .findById(applicationId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Application not found"
-                                ));
-
-        Job job =
-                selected.getJob();
-
-        job.setStatus(
-                Job.JobStatus.ASSIGNED
-        );
-
-        var order =
-                razorpayService
-                        .createOrder(
-                                job.getPaymentAmount()
-                        );
-
-        job.setRazorpayOrderId(
-                order.get("id")
-                        .toString()
-        );
-
-        jobRepository.save(job);
-
-        return Map.of(
-                "orderId",
-                order.get("id"),
-                "amount",
-                order.get("amount"),
-                "currency",
-                order.get("currency"),
-                "key",
-                razorpayKey
-        );
-    }
-
-    // ==========================
-    // VERIFY PAYMENT
-    // ==========================
-
+    // ── VERIFY PAYMENT (was empty stub — now fully implemented) ──
     @PostMapping("/payment/verify")
-    public String verifyPayment(
-            @RequestBody
-            Map<String, String> payload
-    ) {
+    @Transactional
+    public ResponseEntity<?> verifyPayment(@RequestBody Map<String, String> payload) {
+        String razorpayOrderId  = payload.get("razorpay_order_id");
+        String razorpayPaymentId = payload.get("razorpay_payment_id");
+        String razorpaySignature = payload.get("razorpay_signature");
 
-        return
-                "Payment verified";
+        PaymentLog log = new PaymentLog();
+        log.setRazorpayOrderId(razorpayOrderId);
+        log.setRazorpayPaymentId(razorpayPaymentId);
+        log.setSignature(razorpaySignature);
+
+        try {
+            String generatedSig = razorpayService.generateSignature(razorpayOrderId, razorpayPaymentId);
+
+            if (!generatedSig.equals(razorpaySignature)) {
+                log.setStatus("INVALID_SIGNATURE");
+                paymentLogRepository.save(log);
+                return ResponseEntity.status(400).body(Map.of("error", "Invalid payment signature"));
+            }
+
+            Job job = jobRepository.findByRazorpayOrderId(razorpayOrderId)
+                    .orElseThrow(() -> new RuntimeException("Job not found for order: " + razorpayOrderId));
+
+            job.setPaymentStatus(Job.PaymentStatus.RELEASED);
+            jobRepository.save(job);
+
+            log.setStatus("SUCCESS");
+            paymentLogRepository.save(log);
+
+            return ResponseEntity.ok(Map.of("message", "Payment verified and released successfully"));
+
+        } catch (Exception e) {
+            log.setStatus("ERROR: " + e.getMessage());
+            paymentLogRepository.save(log);
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
     }
 }

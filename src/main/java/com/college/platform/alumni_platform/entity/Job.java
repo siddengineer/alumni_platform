@@ -246,26 +246,156 @@
 
 
 
+// package com.college.platform.alumni_platform.entity;
+
+// import jakarta.persistence.*;
+// import java.io.Serializable;
+// import jakarta.persistence.*;
+
+// @Entity
+// @Table(name = "job")
+// public class Job implements Serializable {
+
+//     public enum JobStatus {
+//         PENDING,
+//         APPROVED,
+//         ASSIGNED,
+//         COMPLETED
+//     }
+
+//     public enum PaymentStatus {
+//         HELD,
+//         RELEASED
+//     }
+
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     private Long id;
+
+//     private String title;
+//     private String description;
+//     private String requiredSkills;
+//     private String duration;
+//     private Double paymentAmount;
+
+//     // ✅ ADD COLUMN MAPPING (important)
+//     @Column(name = "razorpay_order_id")
+//     private String razorpayOrderId;
+
+//     @Enumerated(EnumType.STRING)
+//     private JobStatus status;
+
+//     @Enumerated(EnumType.STRING)
+//     private PaymentStatus paymentStatus = PaymentStatus.HELD;
+
+//     @ManyToOne
+//     @JoinColumn(name = "alumni_id")
+//     private User alumni;
+
+//     // ================= GETTERS & SETTERS =================
+
+//     public Long getId() {
+//         return id;
+//     }
+
+//     public String getTitle() {
+//         return title;
+//     }
+
+//     public void setTitle(String title) {
+//         this.title = title;
+//     }
+
+//     public String getDescription() {
+//         return description;
+//     }
+
+//     public void setDescription(String description) {
+//         this.description = description;
+//     }
+
+//     public String getRequiredSkills() {
+//         return requiredSkills;
+//     }
+
+//     public void setRequiredSkills(String requiredSkills) {
+//         this.requiredSkills = requiredSkills;
+//     }
+
+//     public String getDuration() {
+//         return duration;
+//     }
+
+//     public void setDuration(String duration) {
+//         this.duration = duration;
+//     }
+
+//     public Double getPaymentAmount() {
+//         return paymentAmount;
+//     }
+
+//     public void setPaymentAmount(Double paymentAmount) {
+//         this.paymentAmount = paymentAmount;
+//     }
+
+//     public JobStatus getStatus() {
+//         return status;
+//     }
+
+//     public void setStatus(JobStatus status) {
+//         this.status = status;
+//     }
+
+//     public PaymentStatus getPaymentStatus() {
+//         return paymentStatus;
+//     }
+
+//     public void setPaymentStatus(PaymentStatus paymentStatus) {
+//         this.paymentStatus = paymentStatus;
+//     }
+
+//     public User getAlumni() {
+//         return alumni;
+//     }
+
+//     public void setAlumni(User alumni) {
+//         this.alumni = alumni;
+//     }
+
+//     // ✅ VERY IMPORTANT (missing earlier)
+
+//     public String getRazorpayOrderId() {
+//         return razorpayOrderId;
+//     }
+
+//     public void setRazorpayOrderId(String razorpayOrderId) {
+//         this.razorpayOrderId = razorpayOrderId;
+//     }
+// }
+
+
+
+
+
+
+
+
 package com.college.platform.alumni_platform.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.io.Serializable;
-import jakarta.persistence.*;
 
 @Entity
-@Table(name = "job")
+@Table(name = "jobs")
 public class Job implements Serializable {
 
     public enum JobStatus {
-        PENDING,
-        APPROVED,
-        ASSIGNED,
-        COMPLETED
+        PENDING, APPROVED, ASSIGNED, COMPLETED, REJECTED
     }
 
     public enum PaymentStatus {
-        HELD,
-        RELEASED
+        HELD, RELEASED
     }
 
     @Id
@@ -273,102 +403,56 @@ public class Job implements Serializable {
     private Long id;
 
     private String title;
+
+    @Column(columnDefinition = "TEXT")
     private String description;
+
     private String requiredSkills;
     private String duration;
     private Double paymentAmount;
 
-    // ✅ ADD COLUMN MAPPING (important)
     @Column(name = "razorpay_order_id")
     private String razorpayOrderId;
 
     @Enumerated(EnumType.STRING)
-    private JobStatus status;
+    private JobStatus status = JobStatus.PENDING;
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus = PaymentStatus.HELD;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "alumni_id")
+    @JsonIgnoreProperties({"password"})
     private User alumni;
 
-    // ================= GETTERS & SETTERS =================
+    // ── Getters & Setters ──
 
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
 
-    public String getTitle() {
-        return title;
-    }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
-    public String getDescription() {
-        return description;
-    }
+    public String getRequiredSkills() { return requiredSkills; }
+    public void setRequiredSkills(String requiredSkills) { this.requiredSkills = requiredSkills; }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
+    public String getDuration() { return duration; }
+    public void setDuration(String duration) { this.duration = duration; }
 
-    public String getRequiredSkills() {
-        return requiredSkills;
-    }
+    public Double getPaymentAmount() { return paymentAmount; }
+    public void setPaymentAmount(Double paymentAmount) { this.paymentAmount = paymentAmount; }
 
-    public void setRequiredSkills(String requiredSkills) {
-        this.requiredSkills = requiredSkills;
-    }
+    public String getRazorpayOrderId() { return razorpayOrderId; }
+    public void setRazorpayOrderId(String razorpayOrderId) { this.razorpayOrderId = razorpayOrderId; }
 
-    public String getDuration() {
-        return duration;
-    }
+    public JobStatus getStatus() { return status; }
+    public void setStatus(JobStatus status) { this.status = status; }
 
-    public void setDuration(String duration) {
-        this.duration = duration;
-    }
+    public PaymentStatus getPaymentStatus() { return paymentStatus; }
+    public void setPaymentStatus(PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; }
 
-    public Double getPaymentAmount() {
-        return paymentAmount;
-    }
-
-    public void setPaymentAmount(Double paymentAmount) {
-        this.paymentAmount = paymentAmount;
-    }
-
-    public JobStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(JobStatus status) {
-        this.status = status;
-    }
-
-    public PaymentStatus getPaymentStatus() {
-        return paymentStatus;
-    }
-
-    public void setPaymentStatus(PaymentStatus paymentStatus) {
-        this.paymentStatus = paymentStatus;
-    }
-
-    public User getAlumni() {
-        return alumni;
-    }
-
-    public void setAlumni(User alumni) {
-        this.alumni = alumni;
-    }
-
-    // ✅ VERY IMPORTANT (missing earlier)
-
-    public String getRazorpayOrderId() {
-        return razorpayOrderId;
-    }
-
-    public void setRazorpayOrderId(String razorpayOrderId) {
-        this.razorpayOrderId = razorpayOrderId;
-    }
+    public User getAlumni() { return alumni; }
+    public void setAlumni(User alumni) { this.alumni = alumni; }
 }

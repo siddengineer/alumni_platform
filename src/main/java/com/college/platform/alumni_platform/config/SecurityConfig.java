@@ -557,6 +557,98 @@
 
 
 
+// package com.college.platform.alumni_platform.config;
+
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+// @Configuration
+// @EnableMethodSecurity
+// public class SecurityConfig {
+
+//     private final JwtFilter jwtFilter;
+
+//     public SecurityConfig(JwtFilter jwtFilter) {
+//         this.jwtFilter = jwtFilter;
+//     }
+
+//     @Bean
+//     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+//         http
+
+//             // Disable CSRF for REST API
+//             .csrf(csrf -> csrf.disable())
+
+//             // Route security
+//             .authorizeHttpRequests(auth -> auth
+
+//                 // PUBLIC
+//                 .requestMatchers("/", "/index.html").permitAll()
+
+//                 .requestMatchers("/auth/**").permitAll()
+
+//                 .requestMatchers("/pay").permitAll()
+
+//                 .requestMatchers("/razorpay/**").permitAll()
+
+//                 .requestMatchers(
+//                         "/api/v1/alumni/jobs/payment/verify"
+//                 ).permitAll()
+
+//                 // ADMIN
+//                 .requestMatchers(
+//                         "/api/v1/admin/**"
+//                 ).hasRole("ADMIN")
+
+//                 // ALUMNI
+//                 .requestMatchers(
+//                         "/api/v1/alumni/**"
+//                 ).hasRole("ALUMNI")
+
+//                 // STUDENT
+//                 .requestMatchers(
+//                         "/api/v1/student/**"
+//                 ).hasRole("STUDENT")
+
+//                 // REQUIRE LOGIN
+//                 .anyRequest().authenticated()
+//             )
+
+//             // JWT → Stateless
+//             .sessionManagement(session ->
+//                     session.sessionCreationPolicy(
+//                             SessionCreationPolicy.STATELESS
+//                     )
+//             )
+
+//             // JWT FILTER
+//             .addFilterBefore(
+//                     jwtFilter,
+//                     UsernamePasswordAuthenticationFilter.class
+//             );
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder();
+//     }
+// }
+
+
+
+
+
+
 package com.college.platform.alumni_platform.config;
 
 import org.springframework.context.annotation.Bean;
@@ -568,6 +660,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -581,61 +678,43 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-
         http
-
-            // Disable CSRF for REST API
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
-
-            // Route security
             .authorizeHttpRequests(auth -> auth
-
-                // PUBLIC
-                .requestMatchers("/", "/index.html").permitAll()
-
+                // Static frontend files
+                .requestMatchers("/", "/index.html", "/**.html", "/**.css", "/**.js").permitAll()
+                // Auth endpoints - public
                 .requestMatchers("/auth/**").permitAll()
-
-                .requestMatchers("/pay").permitAll()
-
-                .requestMatchers("/razorpay/**").permitAll()
-
-                .requestMatchers(
-                        "/api/v1/alumni/jobs/payment/verify"
-                ).permitAll()
-
-                // ADMIN
-                .requestMatchers(
-                        "/api/v1/admin/**"
-                ).hasRole("ADMIN")
-
-                // ALUMNI
-                .requestMatchers(
-                        "/api/v1/alumni/**"
-                ).hasRole("ALUMNI")
-
-                // STUDENT
-                .requestMatchers(
-                        "/api/v1/student/**"
-                ).hasRole("STUDENT")
-
-                // REQUIRE LOGIN
+                // Payment page - public
+                .requestMatchers("/pay", "/razorpay/**").permitAll()
+                // Payment verify - public (called after Razorpay redirects)
+                .requestMatchers("/api/v1/alumni/jobs/payment/verify").permitAll()
+                // Role-based
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/alumni/**").hasRole("ALUMNI")
+                .requestMatchers("/api/v1/student/**").hasRole("STUDENT")
                 .anyRequest().authenticated()
             )
-
-            // JWT → Stateless
             .sessionManagement(session ->
-                    session.sessionCreationPolicy(
-                            SessionCreationPolicy.STATELESS
-                    )
+                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
-
-            // JWT FILTER
-            .addFilterBefore(
-                    jwtFilter,
-                    UsernamePasswordAuthenticationFilter.class
-            );
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // ✅ CORS - allows frontend (localhost:8080 or any origin) to call the API
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     @Bean
